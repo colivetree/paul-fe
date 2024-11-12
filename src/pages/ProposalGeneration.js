@@ -14,9 +14,10 @@ import TemplateUpload from '../components/TemplateUpload';
 import { 
   generateProposal, getProposals, getTemplate, getOneOffInfo, reviewProposal, 
   planProposal, getProposalPrePlan, getProposalPlan, resetProposalPart, uploadAncillaryDocs,
-  submitOneOffInfo, submitPitch
+  submitOneOffInfo, submitPitch, createProposal, getProposal
 } from '../services/api';
 import '../styles/Markdown.css';
+import { fuzzyMatch } from '../utils/stringUtils'; // Assume we have a fuzzy matching utility
 
 const drawerWidth = 240;
 
@@ -31,19 +32,70 @@ const ProposalGeneration = () => {
   const [generatedProposal, setGeneratedProposal] = useState(null);
   const [status, setStatus] = useState('');
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [expandedSection, setExpandedSection] = useState(null);
+  const [generatingProposal, setGeneratingProposal] = useState(false);
+  const [isPrePlanComplete, setIsPrePlanComplete] = useState(false);
+  const [isPlanComplete, setIsPlanComplete] = useState(false);
+  const [isProposalComplete, setIsProposalComplete] = useState(false);
 
-  const isPrePlanComplete = prePlan && Object.keys(prePlan).length === template?.sections.length;
-  const isPlanComplete = plan && Object.keys(plan).length === template?.sections.length;
-  const isProposalComplete = generatedProposal && generatedProposal.sections && generatedProposal.sections.length === template?.sections.length;
+  const handleChange = (panel) => (event, isExpanded) => {
+    setExpandedSection(isExpanded ? panel : null);
+  };
 
   useEffect(() => {
     fetchProposals();
   }, []);
 
+  useEffect(() => {
+    checkPrePlanComplete();
+  }, [prePlan, template]);
+
+  useEffect(() => {
+    checkPlanComplete();
+  }, [plan, template]);
+
+  useEffect(() => {
+    checkProposalComplete();
+  }, [generatedProposal, template]);
+
+  const checkPrePlanComplete = () => {
+    if (!prePlan || !template) return;
+    
+    // Parse prePlan if it's a string
+    const parsedPrePlan = typeof prePlan === 'string' ? JSON.parse(prePlan) : prePlan;
+    
+    // Count the top-level keys in the parsed pre-plan object
+    const prePlanSections = Object.keys(parsedPrePlan).length;
+    const templateSections = template.sections.length;
+    
+    console.log("Pre-plan sections:", prePlanSections);
+    console.log("Template sections:", templateSections);
+    console.log("Pre-plan structure:", JSON.stringify(parsedPrePlan, null, 2));
+    
+    setIsPrePlanComplete(prePlanSections === templateSections);
+  };
+
+  const checkPlanComplete = () => {
+    if (!plan || !template) return;
+    const planSections = Object.keys(plan).length;
+    const templateSections = template.sections.length;
+    console.log("Plan sections:", planSections);
+    console.log("Template sections:", templateSections);
+    setIsPlanComplete(planSections === templateSections);
+  };
+
+  const checkProposalComplete = () => {
+    if (!generatedProposal || !template) return;
+    const proposalSections = generatedProposal.length;
+    const templateSections = template.sections.length;
+    console.log("Proposal sections:", proposalSections);
+    console.log("Template sections:", templateSections);
+    setIsProposalComplete(proposalSections === templateSections);
+  };
+
   const fetchProposals = async () => {
     try {
       const fetchedProposals = await getProposals();
-      console.log("Fetched proposals:", fetchedProposals); // Add this line for debugging
       setProposals(Array.isArray(fetchedProposals) ? fetchedProposals : []);
       setStatus('Proposals fetched successfully');
     } catch (error) {
@@ -56,15 +108,21 @@ const ProposalGeneration = () => {
   const handleProposalSelect = async (proposal) => {
     setSelectedProposal(proposal);
     try {
-      const [fetchedTemplate, fetchedPrePlan, fetchedPlan] = await Promise.all([
+      const [fetchedTemplate, fetchedPrePlan, fetchedPlan, fetchedProposal] = await Promise.all([
         getTemplate(proposal.template_id),
-        getProposalPrePlan(proposal.template_id),
-        getProposalPlan(proposal.template_id)
+        getProposalPrePlan(proposal.proposal_id),
+        getProposalPlan(proposal.proposal_id),
+        getProposal(proposal.proposal_id)
       ]);
+      console.log('Fetched Template:', fetchedTemplate);
+      console.log('Fetched Pre-Plan:', fetchedPrePlan);
+      console.log('Fetched Plan:', fetchedPlan);
       setTemplate(fetchedTemplate);
       setPrePlan(fetchedPrePlan);
       setPlan(fetchedPlan);
-      setGeneratedProposal(proposal);
+      setGeneratedProposal(fetchedProposal);
+      setPitch(fetchedProposal.pitch || '');
+      setOneOffInfo(fetchedProposal.one_off_info || {});
     } catch (error) {
       console.error('Error fetching proposal details:', error);
       setStatus('Error fetching proposal details');
@@ -83,17 +141,19 @@ const ProposalGeneration = () => {
     try {
       const fetchedTemplate = await getTemplate(templateId);
       setTemplate(fetchedTemplate);
-      setSelectedProposal({ template_id: templateId });
+      const newProposal = await createProposal(templateId); // Add this line
+      setSelectedProposal(newProposal);
+      setStatus('New proposal created successfully');
     } catch (error) {
-      console.error('Error fetching template:', error);
-      setStatus('Error fetching template');
+      console.error('Error creating new proposal:', error);
+      setStatus('Error creating new proposal');
     }
   };
 
   const handleOneOffInfoSubmit = async (info) => {
     setOneOffInfo(info);
     try {
-      await submitOneOffInfo(selectedProposal.template_id, info);
+      await submitOneOffInfo(selectedProposal.proposal_id, info);
       setStatus('One-off information submitted successfully');
     } catch (error) {
       console.error('Error submitting one-off information:', error);
@@ -103,7 +163,7 @@ const ProposalGeneration = () => {
 
   const handlePitchSubmit = async () => {
     try {
-      await submitPitch(selectedProposal.template_id, pitch);
+      await submitPitch(selectedProposal.proposal_id, pitch);
       setStatus('Pitch submitted successfully');
     } catch (error) {
       console.error('Error submitting pitch:', error);
@@ -124,9 +184,19 @@ const ProposalGeneration = () => {
   const handlePlanProposal = async () => {
     try {
       setStatus('Planning proposal...');
-      const [newPrePlan, newPlan] = await planProposal(selectedProposal.template_id, pitch, oneOffInfo);
-      setPrePlan(newPrePlan);
-      setPlan(newPlan);
+      const planningResult = await new Promise((resolve, reject) => {
+        planProposal(
+          selectedProposal.proposal_id,
+          pitch,
+          oneOffInfo,
+          (prePlan) => setPrePlan(prePlan),
+          (plan) => setPlan(plan),
+          (prePlan, plan) => resolve({ prePlan, plan }),
+          (error) => reject(error)
+        );
+      });
+      setPrePlan(planningResult.prePlan);
+      setPlan(planningResult.plan);
       setStatus('Proposal planned successfully');
     } catch (error) {
       console.error('Error planning proposal:', error);
@@ -135,21 +205,74 @@ const ProposalGeneration = () => {
   };
 
   const handleGenerateProposal = async () => {
+    if (!selectedProposal) return;
+    setGeneratingProposal(true);
+    setStatus('Generating proposal...');
     try {
-      setStatus('Generating proposal...');
-      const proposal = await generateProposal(selectedProposal.template_id, oneOffInfo, pitch);
-      setGeneratedProposal(proposal);
-      setStatus('Proposal generated successfully');
+      console.log('Attempting to open WebSocket connection...');
+      const socket = new WebSocket(`${process.env.REACT_APP_API_BASE_URL}/ws/generate-proposal`);
+  
+      socket.onopen = () => {
+        console.log('WebSocket connection opened for proposal generation');
+        console.log('Sending proposal data:', JSON.stringify({
+          proposal_id: selectedProposal.proposal_id
+        }));
+        socket.send(JSON.stringify({
+          proposal_id: selectedProposal.proposal_id
+        }));
+      };
+  
+      socket.onmessage = (event) => {
+        const message = JSON.parse(event.data);
+        console.log('Received message:', message);
+  
+        switch (message.type) {
+          case 'section':
+            setGeneratedProposal((prev) => [...(prev || []), message.data]);
+            setStatus(`Generated section: ${message.data.name}`);
+            break;
+          case 'complete':
+            setGeneratedProposal(message.data.sections);
+            setStatus('Proposal generation completed');
+            setGeneratingProposal(false);
+            break;
+          case 'error':
+            setStatus(`Error: ${message.message}`);
+            setGeneratingProposal(false);
+            break;
+          case 'heartbeat':
+            console.log(`Received heartbeat: ${message.count}`);
+            break;
+          default:
+            console.log('Received unknown message type:', message.type);
+        }
+      };
+  
+      socket.onerror = (error) => {
+        console.error('WebSocket error:', error);
+        setStatus('Error generating proposal');
+        setGeneratingProposal(false);
+      };
+  
+      socket.onclose = (event) => {
+        console.log('WebSocket connection closed:', event.code, event.reason);
+        if (!event.wasClean) {
+          setStatus('WebSocket connection closed unexpectedly');
+        }
+        setGeneratingProposal(false);
+      };
+  
     } catch (error) {
       console.error('Error generating proposal:', error);
       setStatus('Error generating proposal');
+      setGeneratingProposal(false);
     }
-  };
+  };  
 
   const handleReviewProposal = async () => {
     try {
       setStatus('Reviewing proposal...');
-      const reviewedProposal = await reviewProposal(selectedProposal.template_id);
+      const reviewedProposal = await reviewProposal(selectedProposal.proposal_id);
       setGeneratedProposal(reviewedProposal);
       setStatus('Proposal reviewed successfully');
     } catch (error) {
@@ -172,80 +295,143 @@ const ProposalGeneration = () => {
     }
   };
 
-  const renderPrePlan = (prePlan) => {
-    if (!prePlan) return null;
+  const renderResearchPlan = (researchPlan, expandedSection, handleChange, proposalId, setPrePlan, setStatus) => {
+    console.log("Research plan data:", researchPlan);
+
+    let parsedPlan;
+    try {
+      parsedPlan = typeof researchPlan === 'string' ? JSON.parse(researchPlan) : researchPlan;
+    } catch (error) {
+      console.error('Error parsing research plan:', error);
+      return (
+        <Paper elevation={3} sx={{ p: 2, mb: 2, bgcolor: '#ffebee' }}>
+          <Typography color="error" variant="h6" gutterBottom>Error: Invalid Research Plan Data</Typography>
+          <Typography>
+            Unable to parse the research plan data. Please check the data format.
+          </Typography>
+        </Paper>
+      );
+    }
+
+    const handleReset = async () => {
+      try {
+        setStatus('Resetting research plan...');
+        await resetProposalPart(proposalId, 'pre_plan');
+        setPrePlan(null);
+        setStatus('Research plan reset successfully');
+      } catch (error) {
+        console.error('Error resetting research plan:', error);
+        setStatus('Error resetting research plan');
+      }
+    };
+
+    if (!parsedPlan || typeof parsedPlan !== 'object') {
+      console.error('Invalid research plan data:', parsedPlan);
+      return (
+        <Paper elevation={3} sx={{ p: 2, mb: 2, bgcolor: '#ffebee' }}>
+          <Typography color="error" variant="h6" gutterBottom>Error: Invalid Research Plan Data</Typography>
+          <Typography>
+            The research plan data is not in the expected format.
+          </Typography>
+        </Paper>
+      );
+    }
+
     return (
-      <Accordion>
-        <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-          <Typography variant="h6">Pre-Plan</Typography>
-          <Button onClick={(e) => { e.stopPropagation(); handleResetPart('pre-plan'); }} disabled={!prePlan}>Reset Pre-Plan</Button>
-        </AccordionSummary>
-        <AccordionDetails>
-          {Object.entries(prePlan).map(([sectionName, sectionData]) => (
-            <Accordion key={sectionName}>
-              <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                <Typography>{sectionName}</Typography>
-              </AccordionSummary>
-              <AccordionDetails>
-                <Typography variant="subtitle1">Content Highlights:</Typography>
-                <List>
-                  {sectionData.content_highlights.map((item, index) => (
-                    <ListItem key={index}>
-                      <ListItemText primary={item} />
-                    </ListItem>
+      <Paper elevation={3} sx={{ p: 2, mb: 2 }}>
+        <Accordion expanded={expandedSection === 'researchPlan'} onChange={handleChange('researchPlan')}>
+          <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+            <Typography variant="h6">Research Plan</Typography>
+          </AccordionSummary>
+          <AccordionDetails>
+            <Box sx={{ mb: 2 }}>
+              <Button variant="outlined" color="secondary" onClick={handleReset}>
+                Reset Research Plan
+              </Button>
+            </Box>
+            {Object.entries(parsedPlan).map(([sectionName, sectionData]) => (
+              <Accordion key={sectionName}>
+                <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                  <Typography>{sectionName}</Typography>
+                </AccordionSummary>
+                <AccordionDetails>
+                  {['content_highlights', 'proposal_prep_notes', 'tone_style_notes'].map((dataType) => (
+                    <div key={dataType}>
+                      <Typography variant="subtitle1">{dataType.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</Typography>
+                      {Array.isArray(sectionData[dataType]) ? (
+                        <ul>
+                          {sectionData[dataType].map((item, index) => (
+                            <li key={index}>{item}</li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <Typography>{typeof sectionData[dataType] === 'string' ? sectionData[dataType] : 'No data available'}</Typography>
+                      )}
+                    </div>
                   ))}
-                </List>
-                <Typography variant="subtitle1">Proposal Prep Notes:</Typography>
-                <List>
-                  {sectionData.proposal_prep_notes.map((item, index) => (
-                    <ListItem key={index}>
-                      <ListItemText primary={item} />
-                    </ListItem>
-                  ))}
-                </List>
-                <Typography variant="subtitle1">Tone & Style Notes:</Typography>
-                <List>
-                  {sectionData.tone_style_notes.map((item, index) => (
-                    <ListItem key={index}>
-                      <ListItemText primary={item} />
-                    </ListItem>
-                  ))}
-                </List>
-              </AccordionDetails>
-            </Accordion>
-          ))}
-        </AccordionDetails>
-      </Accordion>
+                </AccordionDetails>
+              </Accordion>
+            ))}
+          </AccordionDetails>
+        </Accordion>
+      </Paper>
     );
   };
 
-  const renderPlan = (plan) => {
-    if (!plan) return null;
+  const renderPlan = (plan, expandedSection, handleChange, proposalId, setPlan, setStatus) => {
+    const handleReset = async () => {
+      try {
+        setStatus('Resetting plan...');
+        await resetProposalPart(proposalId, 'plan');
+        setPlan(null);
+        setStatus('Plan reset successfully');
+      } catch (error) {
+        console.error('Error resetting plan:', error);
+        setStatus('Error resetting plan');
+      }
+    };
+
+    if (!plan || typeof plan !== 'object') {
+      console.error('Invalid plan data:', plan);
+      return (
+        <Paper elevation={3} sx={{ p: 2, mb: 2, bgcolor: '#ffebee' }}>
+          <Typography color="error" variant="h6" gutterBottom>Error: Invalid Plan Data</Typography>
+          <Typography>
+            The plan data is not in the expected format.
+          </Typography>
+        </Paper>
+      );
+    }
+
     return (
-      <Accordion>
-        <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-          <Typography variant="h6">Plan</Typography>
-          <Button onClick={(e) => { e.stopPropagation(); handleResetPart('plan'); }} disabled={!plan}>Reset Plan</Button>
-        </AccordionSummary>
-        <AccordionDetails>
-          {Object.entries(plan).map(([sectionName, sectionItems]) => (
-            <Accordion key={sectionName}>
-              <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                <Typography>{sectionName}</Typography>
-              </AccordionSummary>
-              <AccordionDetails>
-                <List>
-                  {sectionItems.map((item, index) => (
-                    <ListItem key={index}>
-                      <ListItemText primary={item} />
-                    </ListItem>
-                  ))}
-                </List>
-              </AccordionDetails>
-            </Accordion>
-          ))}
-        </AccordionDetails>
-      </Accordion>
+      <Paper elevation={3} sx={{ p: 2, mb: 2 }}>
+        <Accordion expanded={expandedSection === 'plan'} onChange={handleChange('plan')}>
+          <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+            <Typography variant="h6">Plan</Typography>
+          </AccordionSummary>
+          <AccordionDetails>
+            <Box sx={{ mb: 2 }}>
+              <Button variant="outlined" color="secondary" onClick={handleReset}>
+                Reset Plan
+              </Button>
+            </Box>
+            {Object.entries(plan).map(([sectionName, planItems]) => (
+              <Accordion key={sectionName}>
+                <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                  <Typography>{sectionName}</Typography>
+                </AccordionSummary>
+                <AccordionDetails>
+                  <ul>
+                    {planItems.map((item, index) => (
+                      <li key={index}>{item}</li>
+                    ))}
+                  </ul>
+                </AccordionDetails>
+              </Accordion>
+            ))}
+          </AccordionDetails>
+        </Accordion>
+      </Paper>
     );
   };
 
@@ -278,12 +464,12 @@ const ProposalGeneration = () => {
         <Toolbar />
         <Box sx={{ overflow: 'auto' }}>
           <List>
-            <ListItem onClick={() => setSelectedProposal(null)} sx={{ cursor: 'pointer' }}>
+            <ListItem button onClick={handleNewProposal}>
               <ListItemText primary="Create New Proposal" />
               <AddIcon />
             </ListItem>
             {proposals.map((proposal) => (
-              <ListItem button key={proposal.proposal_id} onClick={() => handleProposalSelect(proposal)} sx={{ cursor: 'pointer' }}>
+              <ListItem button key={proposal.proposal_id} onClick={() => handleProposalSelect(proposal)}>
                 <ListItemText 
                   primary={`Proposal ${proposal.proposal_id}`}
                   secondary={`Template ID: ${proposal.template_id}`}
@@ -306,7 +492,7 @@ const ProposalGeneration = () => {
             </Typography>
             <Grid container spacing={3}>
               <Grid item xs={12} md={6}>
-                <OneOffInfoForm templateId={selectedProposal.template_id} onSubmit={handleOneOffInfoSubmit} />
+                <OneOffInfoForm templateId={selectedProposal.template_id} proposalId={selectedProposal.proposal_id} onSubmit={handleOneOffInfoSubmit} />
               </Grid>
               <Grid item xs={12} md={6}>
                 <Paper elevation={3} sx={{ p: 2, mb: 2 }}>
@@ -332,8 +518,8 @@ const ProposalGeneration = () => {
                 <DocumentUpload templateId={selectedProposal.template_id} onUpload={handleDocumentUpload} />
               </Grid>
             </Grid>
-            {prePlan && renderPrePlan(prePlan)}
-            {plan && renderPlan(plan)}
+            {prePlan && renderResearchPlan(prePlan, expandedSection, handleChange, selectedProposal.proposal_id, setPrePlan, setStatus)}
+            {plan && renderPlan(plan, expandedSection, handleChange, selectedProposal.proposal_id, setPlan, setStatus)}
             {generatedProposal && generatedProposal.sections && (
               <Paper elevation={3} sx={{ p: 2, mb: 2 }}>
                 <Typography variant="h6" gutterBottom>Generated Proposal</Typography>
@@ -350,19 +536,46 @@ const ProposalGeneration = () => {
                 ))}
               </Paper>
             )}
-            <Box mt={4}>
+            <Box sx={{ mt: 2, display: 'flex', gap: 2 }}>
               {!isPrePlanComplete && (
-                <Button variant="contained" color="primary" onClick={handlePlanProposal} disabled={!template} sx={{ mr: 1 }}>
+                <Button 
+                  variant="contained" 
+                  color="primary" 
+                  onClick={handlePlanProposal}
+                  disabled={!template}
+                >
                   {prePlan ? 'Continue Planning' : 'Plan Proposal'}
                 </Button>
               )}
-              {isPrePlanComplete && !isProposalComplete && (
-                <Button variant="contained" color="primary" onClick={handleGenerateProposal} disabled={!plan} sx={{ mr: 1 }}>
+              
+              {isPrePlanComplete && !isPlanComplete && (
+                <Button 
+                  variant="contained" 
+                  color="primary" 
+                  onClick={handlePlanProposal}
+                  disabled={!template}
+                >
+                  Continue Planning
+                </Button>
+              )}
+              
+              {isPlanComplete && !isProposalComplete && (
+                <Button 
+                  variant="contained" 
+                  color="primary" 
+                  onClick={handleGenerateProposal}
+                  disabled={!plan}
+                >
                   {generatedProposal ? 'Continue Generating' : 'Generate Proposal'}
                 </Button>
               )}
+              
               {isProposalComplete && (
-                <Button variant="contained" color="secondary" onClick={handleReviewProposal} sx={{ mr: 1 }}>
+                <Button 
+                  variant="contained" 
+                  color="secondary" 
+                  onClick={handleReviewProposal}
+                >
                   Review Proposal
                 </Button>
               )}
