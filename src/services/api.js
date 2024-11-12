@@ -8,7 +8,32 @@ console.log('WS_BASE_URL:', WS_BASE_URL);
 
 const api = axios.create({
   baseURL: API_BASE_URL,
+  withCredentials: true,
+  headers: {
+    'Content-Type': 'application/json',
+    'Access-Control-Allow-Origin': '*'
+  }
 });
+
+const createWebSocketConnection = (url, handlers) => {
+  const socket = new WebSocket(url);
+  
+  socket.onerror = (error) => {
+    console.error('WebSocket error:', error);
+    if (handlers.onError) {
+      handlers.onError('WebSocket connection error');
+    }
+  };
+
+  socket.onclose = (event) => {
+    console.log('WebSocket closed:', event);
+    if (!event.wasClean && handlers.onError) {
+      handlers.onError('WebSocket connection closed unexpectedly');
+    }
+  };
+
+  return socket;
+};
 
 export const uploadTemplate = async (file) => {
   const formData = new FormData();
@@ -71,54 +96,49 @@ export const uploadGuideProposals = async (files, templateId) => {
 };
 
 export const generateProposal = (templateId, oneOffInfo, pitch, onSectionGenerated, onComplete, onError) => {
-  let socket;
+  const wsUrl = `${WS_BASE_URL}/ws/generate-proposal`;
+  const socket = createWebSocketConnection(wsUrl, { onError });
   let heartbeatInterval;
 
-  const connect = () => {
-    socket = new WebSocket(`${WS_BASE_URL}/ws/generate-proposal`);
-
-    socket.onopen = () => {
-      console.log('WebSocket connection opened');
-      const data = JSON.stringify({
-        template_id: templateId,
-        one_off_info: oneOffInfo,
-        pitch: pitch
-      });
-      console.log('Sending data:', data);
-      socket.send(data);
-    };
-
-    socket.onmessage = (event) => {
-      const message = JSON.parse(event.data);
-      console.log('Received message:', message);
-
-      if (message.type === 'section') {
-        onSectionGenerated(message.data);
-      } else if (message.type === 'complete') {
-        onComplete(message.data);
-      } else if (message.type === 'error') {
-        onError(message.message);
-      } else if (message.type === 'heartbeat') {
-        console.log('Received heartbeat:', message.count);
-      }
-    };
-
-    socket.onerror = (error) => {
-      console.error('WebSocket error:', error);
-      onError('WebSocket error: ' + (error.message || 'Unknown error'));
-      clearInterval(heartbeatInterval);
-    };
-
-    socket.onclose = (event) => {
-      console.log('WebSocket connection closed:', event.code, event.reason);
-      clearInterval(heartbeatInterval);
-      if (!event.wasClean) {
-        onError('WebSocket connection closed unexpectedly');
-      }
-    };
+  socket.onopen = () => {
+    console.log('WebSocket connection opened');
+    const data = JSON.stringify({
+      template_id: templateId,
+      one_off_info: oneOffInfo,
+      pitch: pitch
+    });
+    console.log('Sending data:', data);
+    socket.send(data);
   };
 
-  connect();
+  socket.onmessage = (event) => {
+    const message = JSON.parse(event.data);
+    console.log('Received message:', message);
+
+    if (message.type === 'section') {
+      onSectionGenerated(message.data);
+    } else if (message.type === 'complete') {
+      onComplete(message.data);
+    } else if (message.type === 'error') {
+      onError(message.message);
+    } else if (message.type === 'heartbeat') {
+      console.log('Received heartbeat:', message.count);
+    }
+  };
+
+  socket.onerror = (error) => {
+    console.error('WebSocket error:', error);
+    onError('WebSocket error: ' + (error.message || 'Unknown error'));
+    clearInterval(heartbeatInterval);
+  };
+
+  socket.onclose = (event) => {
+    console.log('WebSocket connection closed:', event.code, event.reason);
+    clearInterval(heartbeatInterval);
+    if (!event.wasClean) {
+      onError('WebSocket connection closed unexpectedly');
+    }
+  };
 
   return {
     stop: () => {
@@ -217,7 +237,8 @@ export const getProposal = async (proposalId) => {
 };
 
 export const planProposal = (templateId, pitch, oneOffInfo, onPrePlanGenerated, onPlanGenerated, onComplete, onError) => {
-  const socket = new WebSocket(`${WS_BASE_URL}/ws/plan-proposal/${templateId}`);
+  const wsUrl = `${WS_BASE_URL}/ws/plan-proposal/${templateId}`;
+  const socket = createWebSocketConnection(wsUrl, { onError });
 
   socket.onopen = () => {
     console.log('WebSocket connection opened for planning');
