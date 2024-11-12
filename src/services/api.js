@@ -323,3 +323,23 @@ export const submitPitch = async (templateId, pitch) => {
     throw error;
   }
 };
+
+export const getTemplates = async () => {
+  try {
+    const response = await api.get('/list-templates');
+    return response.data.templates;
+  } catch (error) {
+    console.error('Error fetching templates:', error);
+    throw error;
+  }
+};
+
+export const createProposal = async (templateId) => {
+  try {
+    const response = await api.post('/create-proposal', { template_id: templateId });
+    return response.data;
+  } catch (error) {
+    console.error('Error creating proposal:', error);
+    throw error;
+  }
+};
