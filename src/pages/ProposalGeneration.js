@@ -17,7 +17,6 @@ import {
   submitOneOffInfo, submitPitch, createProposal, getProposal
 } from '../services/api';
 import '../styles/Markdown.css';
-import { fuzzyMatch } from '../utils/stringUtils'; // Assume we have a fuzzy matching utility
 
 const drawerWidth = 240;
 
