@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'https://paul-service.nomadriver.co';
-const WS_BASE_URL = API_BASE_URL.replace(/^https?/, 'wss');
+const WS_BASE_URL = API_BASE_URL.replace(/^http/, 'ws').replace(/^https/, 'wss');
 
 console.log('API_BASE_URL:', API_BASE_URL);
 console.log('WS_BASE_URL:', WS_BASE_URL);
@@ -238,48 +238,74 @@ export const getProposal = async (proposalId) => {
 
 export const planProposal = (templateId, pitch, oneOffInfo, onPrePlanGenerated, onPlanGenerated, onComplete, onError) => {
   const wsUrl = `${WS_BASE_URL}/ws/plan-proposal/${templateId}`;
-  const socket = createWebSocketConnection(wsUrl, { onError });
-
-  socket.onopen = () => {
-    console.log('WebSocket connection opened for planning');
-    // Send initial data
-    socket.send(JSON.stringify({ pitch, oneOffInfo }));
-  };
-
-  socket.onmessage = (event) => {
-    const message = JSON.parse(event.data);
-    console.log('Received message:', message);
-
-    if (message.type === 'pre_plan') {
-      onPrePlanGenerated(message.data);
-    } else if (message.type === 'plan') {
-      onPlanGenerated(message.data);
-    } else if (message.type === 'complete') {
-      onComplete(message.pre_plan, message.plan);
-    } else if (message.type === 'error') {
-      onError(message.message);
-    }
-  };
-
-  socket.onerror = (error) => {
-    console.error('WebSocket error:', error);
-    onError('WebSocket error: ' + error.message);
-  };
-
-  socket.onclose = (event) => {
-    console.log('WebSocket connection closed:', event.code, event.reason);
-    if (!event.wasClean) {
-      onError('WebSocket connection closed unexpectedly');
-    }
-  };
-
-  return {
-    stop: () => {
-      if (socket.readyState === WebSocket.OPEN) {
-        socket.close();
+  console.log('Attempting to connect to WebSocket:', wsUrl);
+  
+  try {
+    const socket = new WebSocket(wsUrl);
+    
+    socket.onopen = () => {
+      console.log('WebSocket connection opened for planning');
+      try {
+        const data = JSON.stringify({ pitch, oneOffInfo });
+        console.log('Sending data:', data);
+        socket.send(data);
+      } catch (error) {
+        console.error('Error sending data:', error);
+        onError('Error sending data to server');
       }
-    }
-  };
+    };
+
+    socket.onmessage = (event) => {
+      try {
+        const message = JSON.parse(event.data);
+        console.log('Received message:', message);
+
+        switch(message.type) {
+          case 'pre_plan':
+            onPrePlanGenerated(message.data);
+            break;
+          case 'plan':
+            onPlanGenerated(message.data);
+            break;
+          case 'complete':
+            onComplete(message.pre_plan, message.plan);
+            break;
+          case 'error':
+            onError(message.message);
+            break;
+          default:
+            console.log('Unknown message type:', message.type);
+        }
+      } catch (error) {
+        console.error('Error parsing message:', error);
+        onError('Error parsing server message');
+      }
+    };
+
+    socket.onerror = (error) => {
+      console.error('WebSocket error:', error);
+      onError(`WebSocket error: ${error.message || 'Unknown error'}`);
+    };
+
+    socket.onclose = (event) => {
+      console.log('WebSocket connection closed:', event.code, event.reason);
+      if (!event.wasClean) {
+        onError('WebSocket connection closed unexpectedly');
+      }
+    };
+
+    return {
+      stop: () => {
+        if (socket.readyState === WebSocket.OPEN) {
+          socket.close();
+        }
+      }
+    };
+  } catch (error) {
+    console.error('Error creating WebSocket:', error);
+    onError(`Error creating WebSocket: ${error.message}`);
+    return { stop: () => {} };
+  }
 };
 
 export const getProposalPrePlan = async (templateId) => {
@@ -337,7 +363,7 @@ export const getTemplates = async () => {
 export const createProposal = async (templateId) => {
   try {
     const response = await api.post('/create-proposal', { template_id: templateId });
-    return response.data;
+    return response.data.proposal;
   } catch (error) {
     console.error('Error creating proposal:', error);
     throw error;

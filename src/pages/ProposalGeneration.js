@@ -138,10 +138,23 @@ const ProposalGeneration = () => {
 
   const handleTemplateUpload = async (templateId) => {
     try {
-      const fetchedTemplate = await getTemplate(templateId);
+      const newProposal = await createProposal(templateId); // Add this line      
+      
+      const [fetchedTemplate, fetchedPrePlan, fetchedPlan, fetchedProposal] = await Promise.all([
+        getTemplate(newProposal.template_id),
+        getProposalPrePlan(newProposal.proposal_id),
+        getProposalPlan(newProposal.proposal_id),
+        getProposal(newProposal.proposal_id)
+      ]);
+      console.log('Fetched Template:', fetchedTemplate);
+      console.log('Fetched Pre-Plan:', fetchedPrePlan);
+      console.log('Fetched Plan:', fetchedPlan);
       setTemplate(fetchedTemplate);
-      const newProposal = await createProposal(templateId); // Add this line
-      setSelectedProposal(newProposal);
+      setPrePlan(fetchedPrePlan);
+      setPlan(fetchedPlan);
+      setGeneratedProposal(fetchedProposal);
+      setPitch(fetchedProposal.pitch || '');
+      setOneOffInfo(fetchedProposal.one_off_info || {});
       setStatus('New proposal created successfully');
     } catch (error) {
       console.error('Error creating new proposal:', error);
@@ -514,7 +527,7 @@ const ProposalGeneration = () => {
                 </Paper>
               </Grid>
               <Grid item xs={12}>
-                <DocumentUpload templateId={selectedProposal.template_id} onUpload={handleDocumentUpload} />
+                <DocumentUpload templateId={selectedProposal.template_id} />
               </Grid>
             </Grid>
             {prePlan && renderResearchPlan(prePlan, expandedSection, handleChange, selectedProposal.proposal_id, setPrePlan, setStatus)}
