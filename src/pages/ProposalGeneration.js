@@ -278,12 +278,12 @@ const ProposalGeneration = () => {
         <Toolbar />
         <Box sx={{ overflow: 'auto' }}>
           <List>
-            <ListItem button onClick={() => setSelectedProposal(null)}>
+            <ListItem onClick={() => setSelectedProposal(null)} sx={{ cursor: 'pointer' }}>
               <ListItemText primary="Create New Proposal" />
               <AddIcon />
             </ListItem>
             {proposals.map((proposal) => (
-              <ListItem button key={proposal.proposal_id} onClick={() => handleProposalSelect(proposal)}>
+              <ListItem button key={proposal.proposal_id} onClick={() => handleProposalSelect(proposal)} sx={{ cursor: 'pointer' }}>
                 <ListItemText 
                   primary={`Proposal ${proposal.proposal_id}`}
                   secondary={`Template ID: ${proposal.template_id}`}
