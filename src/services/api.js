@@ -1,11 +1,6 @@
 import axios from 'axios';
 
-console.log('Environment API Base URL:', process.env.REACT_APP_API_BASE_URL); // Add this line to debug
-
-const API_BASE_URL = process.env.REACT_APP_API_BASE_URL;
-if (!API_BASE_URL) {
-  throw new Error('REACT_APP_API_BASE_URL is not defined');
-}
+const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'https://paul-service.nomadriver.co';
 const WS_BASE_URL = API_BASE_URL.replace(/^https?/, 'wss');
 
 console.log('API_BASE_URL:', API_BASE_URL);
