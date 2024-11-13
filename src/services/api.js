@@ -185,9 +185,9 @@ export const submitOneOffInfo = async (templateId, oneOffInfo) => {
   }
 };
 
-export const getOneOffInfo = async (templateId) => {
+export const getOneOffInfo = async (proposalId) => {
   try {
-    const response = await api.get(`/get-one-off-info/${templateId}`);
+    const response = await api.get(`/get-one-off-info/${proposalId}`);
     return response.data.one_off_info;
   } catch (error) {
     console.error('Error getting one-off information:', error);
@@ -216,9 +216,9 @@ export const listDocuments = async (templateId) => {
   }
 };
 
-export const reviewProposal = async (templateId, proposal) => {
+export const reviewProposal = async (proposalId, proposal) => {
   try {
-    const response = await api.post(`/review-proposal/${templateId}`, { sections: proposal });
+    const response = await api.post(`/review-proposal/${proposalId}`, { sections: proposal });
     return response.data.review;
   } catch (error) {
     console.error('Error reviewing proposal:', error);

@@ -36,6 +36,7 @@ const ProposalGeneration = () => {
   const [isPrePlanComplete, setIsPrePlanComplete] = useState(false);
   const [isPlanComplete, setIsPlanComplete] = useState(false);
   const [isProposalComplete, setIsProposalComplete] = useState(false);
+  const [proposalReview, setProposalReview] = useState(null);
 
   const handleChange = (panel) => (event, isExpanded) => {
     setExpandedSection(isExpanded ? panel : null);
@@ -85,7 +86,8 @@ const ProposalGeneration = () => {
 
   const checkProposalComplete = () => {
     if (!generatedProposal || !template) return;
-    const proposalSections = generatedProposal.length;
+    if (!generatedProposal.sections) return;
+    const proposalSections = generatedProposal.sections.length;
     const templateSections = template.sections.length;
     console.log("Proposal sections:", proposalSections);
     console.log("Template sections:", templateSections);
@@ -116,6 +118,7 @@ const ProposalGeneration = () => {
       console.log('Fetched Template:', fetchedTemplate);
       console.log('Fetched Pre-Plan:', fetchedPrePlan);
       console.log('Fetched Plan:', fetchedPlan);
+      console.log('Fetched Proposal:', fetchedProposal);
       setTemplate(fetchedTemplate);
       setPrePlan(fetchedPrePlan);
       setPlan(fetchedPlan);
@@ -284,8 +287,9 @@ const ProposalGeneration = () => {
   const handleReviewProposal = async () => {
     try {
       setStatus('Reviewing proposal...');
-      const reviewedProposal = await reviewProposal(selectedProposal.proposal_id);
-      setGeneratedProposal(reviewedProposal);
+      console.log('Generated Proposal:', generatedProposal);
+      const review = await reviewProposal(generatedProposal.proposal_id, generatedProposal);
+      setProposalReview(review);
       setStatus('Proposal reviewed successfully');
     } catch (error) {
       console.error('Error reviewing proposal:', error);
@@ -308,7 +312,7 @@ const ProposalGeneration = () => {
   };
 
   const renderResearchPlan = (researchPlan, expandedSection, handleChange, proposalId, setPrePlan, setStatus) => {
-    console.log("Research plan data:", researchPlan);
+    //console.log("Research plan data:", researchPlan);
 
     let parsedPlan;
     try {
@@ -460,9 +464,14 @@ const ProposalGeneration = () => {
           >
             <MenuIcon />
           </IconButton>
-          <Typography variant="h6" noWrap component="div">
-            PAUL - Proposal Automation Library by Nomad River
-          </Typography>
+          <Box sx={{ display: 'flex', flexDirection: 'row', gap: 3, alignItems: 'flex-end' }}>
+            <Typography variant="h6" noWrap component="div">
+              PAUL by Nomad River
+            </Typography>
+            <Typography variant="subtitle1" component="div">
+              Proposal Automation Library
+            </Typography>
+          </Box>
         </Toolbar>
       </AppBar>
       <Drawer
@@ -535,7 +544,7 @@ const ProposalGeneration = () => {
             {generatedProposal && generatedProposal.sections && (
               <Paper elevation={3} sx={{ p: 2, mb: 2 }}>
                 <Typography variant="h6" gutterBottom>Generated Proposal</Typography>
-                <Button onClick={() => handleResetPart('proposal')} disabled={!generatedProposal}>Reset Proposal</Button>
+                <Button variant="outlined" color="secondary" onClick={() => handleResetPart('proposal')} disabled={!generatedProposal}>Reset Proposal</Button>
                 {generatedProposal.sections.map((section) => (
                   <Accordion key={section.name}>
                     <AccordionSummary expandIcon={<ExpandMoreIcon />}>
@@ -592,6 +601,55 @@ const ProposalGeneration = () => {
                 </Button>
               )}
             </Box>
+            {proposalReview && (
+  <Paper elevation={3} sx={{ p: 2, mb: 2 }}>
+    <Typography variant="h6" gutterBottom>Proposal Review</Typography>
+    <Typography variant="subtitle1" gutterBottom>Overall Assessment</Typography>
+    <Typography paragraph>{proposalReview.overall_assessment}</Typography>
+    
+    <Typography variant="subtitle1" gutterBottom>Criteria Assessment</Typography>
+    {proposalReview.criteria_addressed.map((criterion, index) => (
+      <Accordion key={index}>
+        <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+          <Typography>{criterion.criterion}</Typography>
+        </AccordionSummary>
+        <AccordionDetails>
+          <Typography variant="body2" gutterBottom><strong>Assessment:</strong></Typography>
+          <Typography paragraph>{criterion.assessment}</Typography>
+          <Typography variant="body2" gutterBottom><strong>Suggestions:</strong></Typography>
+          <Typography>{criterion.suggestions}</Typography>
+        </AccordionDetails>
+      </Accordion>
+    ))}
+    
+    {proposalReview.missing_elements.length > 0 && (
+      <>
+        <Typography variant="subtitle1" gutterBottom sx={{ mt: 2 }}>Missing Elements</Typography>
+        {proposalReview.missing_elements.map((element, index) => (
+          <Accordion key={index}>
+            <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+              <Typography>{element.element}</Typography>
+            </AccordionSummary>
+            <AccordionDetails>
+              <Typography>{element.suggestion}</Typography>
+            </AccordionDetails>
+          </Accordion>
+        ))}
+      </>
+    )}
+    
+    {proposalReview.general_improvements.length > 0 && (
+      <>
+        <Typography variant="subtitle1" gutterBottom sx={{ mt: 2 }}>General Improvements</Typography>
+        <ul>
+          {proposalReview.general_improvements.map((improvement, index) => (
+            <li key={index}><Typography>{improvement}</Typography></li>
+          ))}
+        </ul>
+      </>
+    )}
+  </Paper>
+)}
           </>
         )}
         <Typography variant="body1" style={{ marginTop: '20px' }}>

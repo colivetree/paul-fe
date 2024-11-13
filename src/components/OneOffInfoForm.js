@@ -2,18 +2,18 @@ import React, { useState, useEffect } from 'react';
 import { getTemplate, submitOneOffInfo, getOneOffInfo } from '../services/api';
 import { TextField, Button, Typography, Box, Grid, Paper } from '@mui/material';
 
-const OneOffInfoForm = ({ templateId, onSubmit }) => {
+const OneOffInfoForm = ({ templateId, proposalId, onSubmit }) => {
   const [template, setTemplate] = useState(null);
   const [oneOffInfo, setOneOffInfo] = useState({});
   const [status, setStatus] = useState('');
 
   useEffect(() => {
     const fetchTemplateAndOneOffInfo = async () => {
-      if (templateId) {
+      if (templateId && proposalId) {
         try {
           const [fetchedTemplate, fetchedOneOffInfo] = await Promise.all([
             getTemplate(templateId),
-            getOneOffInfo(templateId)
+            getOneOffInfo(proposalId)
           ]);
           setTemplate(fetchedTemplate);
           setOneOffInfo(fetchedOneOffInfo);
