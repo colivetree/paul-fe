@@ -369,3 +369,42 @@ export const createProposal = async (templateId) => {
     throw error;
   }
 };
+
+export const updatePrePlan = async (proposalId, sectionName, content) => {
+  try {
+    const response = await api.post(`/update-pre-plan/${proposalId}`, {
+      section_name: sectionName,
+      content: content
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Error updating pre-plan:', error);
+    throw error;
+  }
+};
+
+export const updatePlan = async (proposalId, sectionName, content) => {
+  try {
+    const response = await api.post(`/update-plan/${proposalId}`, {
+      section_name: sectionName,
+      content: content
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Error updating plan:', error);
+    throw error;
+  }
+};
+
+export const updateProposalSection = async (proposalId, sectionName, content) => {
+  try {
+    const response = await api.post(`/update-proposal-section/${proposalId}`, {
+      section_name: sectionName,
+      content: content
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Error updating proposal section:', error);
+    throw error;
+  }
+};

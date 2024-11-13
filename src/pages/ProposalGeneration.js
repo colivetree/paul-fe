@@ -14,11 +14,25 @@ import TemplateUpload from '../components/TemplateUpload';
 import { 
   generateProposal, getProposals, getTemplate, getOneOffInfo, reviewProposal, 
   planProposal, getProposalPrePlan, getProposalPlan, resetProposalPart, uploadAncillaryDocs,
-  submitOneOffInfo, submitPitch, createProposal, getProposal
+  submitOneOffInfo, submitPitch, createProposal, getProposal, updatePrePlan, updatePlan, updateProposalSection
 } from '../services/api';
 import '../styles/Markdown.css';
+import { Edit as EditIcon, Save as SaveIcon } from '@mui/icons-material';
 
 const drawerWidth = 240;
+
+const globalStyles = {
+  '& pre': {
+    maxWidth: '100%',
+    overflowX: 'auto',
+    whiteSpace: 'pre-wrap',
+    wordWrap: 'break-word'
+  },
+  '& .MuiAccordionDetails-root': {
+    maxWidth: '100%',
+    padding: '16px'
+  }
+};
 
 const ProposalGeneration = () => {
   const [proposals, setProposals] = useState([]);
@@ -37,6 +51,8 @@ const ProposalGeneration = () => {
   const [isPlanComplete, setIsPlanComplete] = useState(false);
   const [isProposalComplete, setIsProposalComplete] = useState(false);
   const [proposalReview, setProposalReview] = useState(null);
+  const [editingSection, setEditingSection] = useState(null);
+  const [editingContent, setEditingContent] = useState('');
 
   const handleChange = (panel) => (event, isExpanded) => {
     setExpandedSection(isExpanded ? panel : null);
@@ -311,9 +327,51 @@ const ProposalGeneration = () => {
     }
   };
 
-  const renderResearchPlan = (researchPlan, expandedSection, handleChange, proposalId, setPrePlan, setStatus) => {
-    //console.log("Research plan data:", researchPlan);
+  const handleStartEdit = (sectionType, sectionName, content) => {
+    setEditingSection({ type: sectionType, name: sectionName });
+    setEditingContent(JSON.stringify(content, null, 2));
+  };
 
+  const handleSaveEdit = async () => {
+    try {
+      setStatus('Saving changes...');
+      
+      // Parse content if needed
+      let parsedContent = editingContent;
+      if (editingSection.type !== 'proposal') {
+        try {
+          parsedContent = JSON.parse(editingContent);
+        } catch (error) {
+          setStatus('Error: Invalid JSON format');
+          return;
+        }
+      }
+
+      // Save based on section type
+      if (editingSection.type === 'pre-plan') {
+        await updatePrePlan(selectedProposal.proposal_id, editingSection.name, parsedContent);
+      } else if (editingSection.type === 'plan') {
+        await updatePlan(selectedProposal.proposal_id, editingSection.name, parsedContent);
+      } else if (editingSection.type === 'proposal') {
+        await updateProposalSection(selectedProposal.proposal_id, editingSection.name, parsedContent);
+      }
+
+      // Refresh the proposal data
+      const updatedProposal = await getProposal(selectedProposal.proposal_id);
+      setPrePlan(updatedProposal.pre_plan);
+      setPlan(updatedProposal.plan);
+      setGeneratedProposal(updatedProposal);
+
+      // Clear edit mode
+      setEditingSection(null);
+      setEditingContent('');
+      setStatus('Changes saved successfully');
+    } catch (error) {
+      setStatus(`Error saving changes: ${error.message}`);
+    }
+  };
+
+  const renderResearchPlan = (researchPlan, expandedSection, handleChange, proposalId, setPrePlan, setStatus) => {
     let parsedPlan;
     try {
       parsedPlan = typeof researchPlan === 'string' ? JSON.parse(researchPlan) : researchPlan;
@@ -324,6 +382,18 @@ const ProposalGeneration = () => {
           <Typography color="error" variant="h6" gutterBottom>Error: Invalid Research Plan Data</Typography>
           <Typography>
             Unable to parse the research plan data. Please check the data format.
+          </Typography>
+        </Paper>
+      );
+    }
+
+    if (!parsedPlan || typeof parsedPlan !== 'object') {
+      console.error('Invalid research plan data:', parsedPlan);
+      return (
+        <Paper elevation={3} sx={{ p: 2, mb: 2, bgcolor: '#ffebee' }}>
+          <Typography color="error" variant="h6" gutterBottom>Error: Invalid Research Plan Data</Typography>
+          <Typography>
+            The research plan data is not in the expected format.
           </Typography>
         </Paper>
       );
@@ -341,18 +411,6 @@ const ProposalGeneration = () => {
       }
     };
 
-    if (!parsedPlan || typeof parsedPlan !== 'object') {
-      console.error('Invalid research plan data:', parsedPlan);
-      return (
-        <Paper elevation={3} sx={{ p: 2, mb: 2, bgcolor: '#ffebee' }}>
-          <Typography color="error" variant="h6" gutterBottom>Error: Invalid Research Plan Data</Typography>
-          <Typography>
-            The research plan data is not in the expected format.
-          </Typography>
-        </Paper>
-      );
-    }
-
     return (
       <Paper elevation={3} sx={{ p: 2, mb: 2 }}>
         <Accordion expanded={expandedSection === 'researchPlan'} onChange={handleChange('researchPlan')}>
@@ -365,29 +423,48 @@ const ProposalGeneration = () => {
                 Reset Research Plan
               </Button>
             </Box>
-            {Object.entries(parsedPlan).map(([sectionName, sectionData]) => (
-              <Accordion key={sectionName}>
-                <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                  <Typography>{sectionName}</Typography>
-                </AccordionSummary>
-                <AccordionDetails>
-                  {['content_highlights', 'proposal_prep_notes', 'tone_style_notes'].map((dataType) => (
-                    <div key={dataType}>
-                      <Typography variant="subtitle1">{dataType.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</Typography>
-                      {Array.isArray(sectionData[dataType]) ? (
-                        <ul>
-                          {sectionData[dataType].map((item, index) => (
-                            <li key={index}>{item}</li>
-                          ))}
-                        </ul>
-                      ) : (
-                        <Typography>{typeof sectionData[dataType] === 'string' ? sectionData[dataType] : 'No data available'}</Typography>
-                      )}
-                    </div>
-                  ))}
-                </AccordionDetails>
-              </Accordion>
-            ))}
+            {Object.entries(parsedPlan).map(([sectionName, sectionData]) => {
+              const contentHighlights = sectionData?.content_highlights || [];
+              const prepNotes = sectionData?.proposal_prep_notes || [];
+              const styleNotes = sectionData?.tone_style_notes || [];
+
+              return (
+                <Accordion key={sectionName}>
+                  <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                    <Typography>{sectionName}</Typography>
+                  </AccordionSummary>
+                  <AccordionDetails>
+                    <Box sx={{ width: '100%', maxWidth: '100%', overflowX: 'auto' }}>
+                      <Typography variant="subtitle1">Content Highlights:</Typography>
+                      <List>
+                        {contentHighlights.map((item, index) => (
+                          <ListItem key={index}>
+                            <ListItemText primary={item} />
+                          </ListItem>
+                        ))}
+                      </List>
+                      <Typography variant="subtitle1">Proposal Prep Notes:</Typography>
+                      <List>
+                        {prepNotes.map((item, index) => (
+                          <ListItem key={index}>
+                            <ListItemText primary={item} />
+                          </ListItem>
+                        ))}
+                      </List>
+                      <Typography variant="subtitle1">Tone & Style Notes:</Typography>
+                      <List>
+                        {styleNotes.map((item, index) => (
+                          <ListItem key={index}>
+                            <ListItemText primary={item} />
+                          </ListItem>
+                        ))}
+                      </List>
+                      {renderEditableSection('pre-plan', sectionName, sectionData)}
+                    </Box>
+                  </AccordionDetails>
+                </Accordion>
+              );
+            })}
           </AccordionDetails>
         </Accordion>
       </Paper>
@@ -437,11 +514,16 @@ const ProposalGeneration = () => {
                   <Typography>{sectionName}</Typography>
                 </AccordionSummary>
                 <AccordionDetails>
-                  <ul>
-                    {planItems.map((item, index) => (
-                      <li key={index}>{item}</li>
-                    ))}
-                  </ul>
+                  <Box sx={{ width: '100%', maxWidth: '100%', overflowX: 'auto' }}>
+                    <List>
+                      {planItems.map((item, index) => (
+                        <ListItem key={index}>
+                          <ListItemText primary={item} />
+                        </ListItem>
+                      ))}
+                    </List>
+                    {renderEditableSection('plan', sectionName, planItems)}
+                  </Box>
                 </AccordionDetails>
               </Accordion>
             ))}
@@ -451,8 +533,73 @@ const ProposalGeneration = () => {
     );
   };
 
+  const renderEditableSection = (sectionType, sectionName, content) => {
+    const isEditing = editingSection?.type === sectionType && editingSection?.name === sectionName;
+
+    return (
+      <Box sx={{ 
+        position: 'relative', 
+        width: '100%', 
+        maxWidth: '100%', 
+        overflowX: 'auto',
+        mt: 2,
+        pr: 6
+      }}>
+        {isEditing ? (
+          <Box sx={{ position: 'relative' }}>
+            <TextField
+              fullWidth
+              multiline
+              rows={10}
+              value={editingContent}
+              onChange={(e) => setEditingContent(e.target.value)}
+              sx={{ mb: 2 }}
+            />
+            <IconButton 
+              onClick={handleSaveEdit}
+              sx={{ 
+                position: 'absolute',
+                top: 0,
+                right: 0,
+                zIndex: 2,
+                bgcolor: 'background.paper',
+                '&:hover': {
+                  bgcolor: 'action.hover'
+                }
+              }}
+            >
+              <SaveIcon />
+            </IconButton>
+          </Box>
+        ) : (
+          <Box sx={{ 
+            position: 'relative', 
+            width: '100%',
+            minHeight: '40px'
+          }}>
+            <IconButton 
+              onClick={() => handleStartEdit(sectionType, sectionName, content)}
+              sx={{ 
+                position: 'absolute',
+                top: 0,
+                right: 0,
+                zIndex: 2,
+                bgcolor: 'background.paper',
+                '&:hover': {
+                  bgcolor: 'action.hover'
+                }
+              }}
+            >
+              <EditIcon />
+            </IconButton>
+          </Box>
+        )}
+      </Box>
+    );
+  };
+
   return (
-    <Box sx={{ display: 'flex' }}>
+    <Box sx={{ display: 'flex', ...globalStyles }}>
       <AppBar position="fixed" sx={{ zIndex: (theme) => theme.zIndex.drawer + 1 }}>
         <Toolbar>
           <IconButton
@@ -551,7 +698,10 @@ const ProposalGeneration = () => {
                       <Typography>{section.name}</Typography>
                     </AccordionSummary>
                     <AccordionDetails>
-                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{section.content}</ReactMarkdown>
+                      <Box sx={{ width: '100%', maxWidth: '100%', overflowX: 'auto' }}>
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>{section.content}</ReactMarkdown>
+                        {renderEditableSection('proposal', section.name, section.content)}
+                      </Box>
                     </AccordionDetails>
                   </Accordion>
                 ))}
