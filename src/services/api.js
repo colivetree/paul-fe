@@ -62,15 +62,19 @@ export const uploadTemplate = async (file) => {
 };
 
 export const uploadAncillaryDocs = async (files, templateId) => {
-  const formData = new FormData();
-  formData.append('template_id', templateId);
-  files.forEach((file) => formData.append('files', file));
   try {
-    const response = await api.post('/upload-ancillary-docs', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-    });
+    const formData = new FormData();
+    files.forEach(file => formData.append('files', file));
+    
+    const response = await api.post(
+      `/templates/${templateId}/documents/ancillary`,
+      formData,
+      {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      }
+    );
     return response.data;
   } catch (error) {
     console.error('Error uploading ancillary documents:', error);
@@ -79,15 +83,19 @@ export const uploadAncillaryDocs = async (files, templateId) => {
 };
 
 export const uploadGuideProposals = async (files, templateId) => {
-  const formData = new FormData();
-  formData.append('template_id', templateId);
-  files.forEach((file) => formData.append('files', file));
   try {
-    const response = await api.post('/upload-guide-proposals', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-    });
+    const formData = new FormData();
+    files.forEach(file => formData.append('files', file));
+    
+    const response = await api.post(
+      `/templates/${templateId}/documents/guide-proposals`,
+      formData,
+      {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      }
+    );
     return response.data;
   } catch (error) {
     console.error('Error uploading guide proposals:', error);
@@ -164,20 +172,17 @@ export const saveTemplate = async (template) => {
 
 export const getTemplate = async (templateId) => {
   try {
-    const response = await api.get(`/get-template/${templateId}`);
+    const response = await api.get(`/templates/${templateId}`);
     return response.data;
   } catch (error) {
-    console.error('Error getting template:', error);
-    if (error.response && error.response.status === 404) {
-      throw new Error(`Template with ID ${templateId} not found`);
-    }
+    console.error('Error fetching template:', error);
     throw error;
   }
 };
 
-export const submitOneOffInfo = async (templateId, oneOffInfo) => {
+export const submitOneOffInfo = async (proposalId, oneOffInfo) => {
   try {
-    const response = await api.post(`/submit-one-off-info/${templateId}`, { oneOffInfo });
+    const response = await api.put(`/proposals/${proposalId}`, { one_off_info: oneOffInfo });
     return response.data;
   } catch (error) {
     console.error('Error submitting one-off information:', error);
@@ -197,9 +202,21 @@ export const getOneOffInfo = async (proposalId) => {
 
 export const getProposals = async () => {
   try {
+    console.log('Fetching proposals...');
     const response = await api.get('/list-proposals');
-    console.log("API response for listProposals:", response.data); // Add this line for debugging
-    return response.data.proposals || [];
+    console.log('Raw response:', response.data);
+    
+    // The response has a 'proposals' object with proposal IDs as keys
+    const proposalsObj = response.data.proposals || {};
+    
+    // Convert the object to an array
+    const proposalsArray = Object.keys(proposalsObj).map(id => ({
+      ...proposalsObj[id],
+      proposal_id: parseInt(id)  // Ensure proposal_id is set from the key
+    }));
+    
+    console.log('Processed proposals array:', proposalsArray);
+    return proposalsArray;
   } catch (error) {
     console.error('Error fetching proposals:', error);
     throw error;
@@ -208,7 +225,7 @@ export const getProposals = async () => {
 
 export const listDocuments = async (templateId) => {
   try {
-    const response = await api.get(`/list-documents/${templateId}`);
+    const response = await api.get(`/templates/${templateId}/documents`);
     return response.data;
   } catch (error) {
     console.error('Error listing documents:', error);
@@ -228,7 +245,9 @@ export const reviewProposal = async (proposalId, proposal) => {
 
 export const getProposal = async (proposalId) => {
   try {
-    const response = await api.get(`/get-proposal/${proposalId}`);
+    console.log('Fetching proposal:', proposalId);
+    const response = await api.get(`/proposals/${proposalId}`);
+    console.log('Proposal response:', response.data);
     return response.data;
   } catch (error) {
     console.error('Error fetching proposal:', error);
@@ -308,24 +327,26 @@ export const planProposal = (templateId, pitch, oneOffInfo, onPrePlanGenerated, 
   }
 };
 
-export const getProposalPrePlan = async (templateId) => {
+export const getProposalPrePlan = async (proposalId) => {
   try {
-    const response = await api.get(`/get-proposal-pre-plan/${templateId}`);
+    console.log('Fetching pre-plan:', proposalId);
+    const response = await api.get(`/proposals/${proposalId}/pre-plan`);
     console.log('Pre-plan response:', response.data);
-    return response.data.pre_plan;
+    return response.data;
   } catch (error) {
-    console.error('Error fetching proposal pre-plan:', error);
+    console.error('Error fetching pre-plan:', error);
     throw error;
   }
 };
 
-export const getProposalPlan = async (templateId) => {
+export const getProposalPlan = async (proposalId) => {
   try {
-    const response = await api.get(`/get-proposal-plan/${templateId}`);
+    console.log('Fetching plan:', proposalId);
+    const response = await api.get(`/proposals/${proposalId}/plan`);
     console.log('Plan response:', response.data);
-    return response.data.plan;
+    return response.data;
   } catch (error) {
-    console.error('Error fetching proposal plan:', error);
+    console.error('Error fetching plan:', error);
     throw error;
   }
 };
@@ -340,9 +361,9 @@ export const resetProposalPart = async (templateId, part) => {
   }
 };
 
-export const submitPitch = async (templateId, pitch) => {
+export const submitPitch = async (proposalId, pitch) => {
   try {
-    const response = await api.post(`/submit-pitch/${templateId}`, { pitch });
+    const response = await api.post(`/proposals/${proposalId}/pitch`, { pitch });
     return response.data;
   } catch (error) {
     console.error('Error submitting pitch:', error);
@@ -360,10 +381,13 @@ export const getTemplates = async () => {
   }
 };
 
-export const createProposal = async (templateId) => {
+export const createProposal = async (templateId = null, name = null) => {
   try {
-    const response = await api.post('/create-proposal', { template_id: templateId });
-    return response.data.proposal;
+    const response = await api.post('/proposals', { 
+      template_id: templateId,
+      name: name 
+    });
+    return response.data;
   } catch (error) {
     console.error('Error creating proposal:', error);
     throw error;
@@ -405,6 +429,96 @@ export const updateProposalSection = async (proposalId, sectionName, content) =>
     return response.data;
   } catch (error) {
     console.error('Error updating proposal section:', error);
+    throw error;
+  }
+};
+
+export const improveTemplate = async (templateId, pitch, name) => {
+  try {
+    const response = await api.post(`/templates/${templateId}/improve`, {
+      pitch,
+      name
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Error improving template:', error);
+    throw error;
+  }
+};
+
+export const generateTemplate = async (pitch, documentIds) => {
+  try {
+    const response = await api.post('/templates/generate', {
+      pitch,
+      document_ids: documentIds
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Error generating template:', error);
+    throw error;
+  }
+};
+
+export const createNewProposal = async () => {
+  try {
+    // First create empty proposal
+    const proposalResponse = await api.post('/proposals');
+    const proposal = proposalResponse.data;
+
+    // Then create empty template
+    const templateResponse = await api.post(`/templates/empty/${proposal.proposal_id}`);
+    
+    return {
+      proposal: proposal,
+      template: templateResponse.data
+    };
+  } catch (error) {
+    console.error('Error creating new proposal:', error);
+    throw error;
+  }
+};
+
+export const updateProposalName = async (proposalId, name) => {
+  try {
+    const response = await api.put(`/proposals/${proposalId}/name`, { name });
+    return response.data;
+  } catch (error) {
+    console.error('Error updating proposal name:', error);
+    throw error;
+  }
+};
+
+export const updateTemplate = async (templateId, template) => {
+  try {
+    console.log('API updateTemplate called with:', {
+      templateId,
+      template
+    });
+    const response = await api.put(`/templates/${templateId}`, template);
+    console.log('API updateTemplate response:', response.data);
+    return response.data;
+  } catch (error) {
+    console.error('API updateTemplate error:', error);
+    throw error;
+  }
+};
+
+export const deleteProposal = async (proposalId) => {
+  try {
+    const response = await api.delete(`/proposals/${proposalId}`);
+    return response.data;
+  } catch (error) {
+    console.error('Error deleting proposal:', error);
+    throw error;
+  }
+};
+
+export const improvePitch = async (proposalId, pitch) => {
+  try {
+    const response = await api.post(`/proposals/${proposalId}/improve-pitch`, { pitch });
+    return response.data.improved_pitch;
+  } catch (error) {
+    console.error('Error improving pitch:', error);
     throw error;
   }
 };

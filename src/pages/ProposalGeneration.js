@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Button, TextField, Typography, Box, List, ListItem, ListItemText, Container, Grid, Card, CardContent, 
-  Accordion, AccordionSummary, AccordionDetails, Drawer, AppBar, Toolbar, IconButton, Paper
+  Accordion, AccordionSummary, AccordionDetails, Drawer, AppBar, Toolbar, IconButton, Paper, Tabs, Tab,
+  Dialog, DialogTitle, DialogContent, DialogActions, DialogContentText
 } from '@mui/material';
 import MenuIcon from '@mui/icons-material/Menu';
 import AddIcon from '@mui/icons-material/Add';
@@ -14,10 +15,16 @@ import TemplateUpload from '../components/TemplateUpload';
 import { 
   generateProposal, getProposals, getTemplate, getOneOffInfo, reviewProposal, 
   planProposal, getProposalPrePlan, getProposalPlan, resetProposalPart, uploadAncillaryDocs,
-  submitOneOffInfo, submitPitch, createProposal, getProposal, updatePrePlan, updatePlan, updateProposalSection
+  submitOneOffInfo, submitPitch, createProposal, getProposal, updatePrePlan, updatePlan, updateProposalSection,
+  createNewProposal, updateProposalName, updateTemplate, improveTemplate, deleteProposal, improvePitch
 } from '../services/api';
 import '../styles/Markdown.css';
-import { Edit as EditIcon, Save as SaveIcon } from '@mui/icons-material';
+import { Edit as EditIcon, Save as SaveIcon, Delete as DeleteIcon } from '@mui/icons-material';
+import TabPanel from '../components/TabPanel';
+import { LoadingButton } from '@mui/lab';
+import { AutoFixHigh as AutoFixHighIcon } from '@mui/icons-material';
+import PitchSection from '../components/PitchSection';
+import TemplateSection from '../components/TemplateSection';
 
 const drawerWidth = 240;
 
@@ -53,6 +60,14 @@ const ProposalGeneration = () => {
   const [proposalReview, setProposalReview] = useState(null);
   const [editingSection, setEditingSection] = useState(null);
   const [editingContent, setEditingContent] = useState('');
+  const [tabValue, setTabValue] = useState(0);
+  const [editingName, setEditingName] = useState(false);
+  const [proposalName, setProposalName] = useState('');
+  const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
+  const [editingTemplate, setEditingTemplate] = useState(null);
+  const [isTemplateLoading, setIsTemplateLoading] = useState(false);
+  const [isTemplateImproving, setIsTemplateImproving] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
   const handleChange = (panel) => (event, isExpanded) => {
     setExpandedSection(isExpanded ? panel : null);
@@ -125,34 +140,70 @@ const ProposalGeneration = () => {
   const handleProposalSelect = async (proposal) => {
     setSelectedProposal(proposal);
     try {
+      console.log('Selected proposal:', proposal);
       const [fetchedTemplate, fetchedPrePlan, fetchedPlan, fetchedProposal] = await Promise.all([
         getTemplate(proposal.template_id),
         getProposalPrePlan(proposal.proposal_id),
         getProposalPlan(proposal.proposal_id),
         getProposal(proposal.proposal_id)
       ]);
-      console.log('Fetched Template:', fetchedTemplate);
-      console.log('Fetched Pre-Plan:', fetchedPrePlan);
-      console.log('Fetched Plan:', fetchedPlan);
-      console.log('Fetched Proposal:', fetchedProposal);
-      setTemplate(fetchedTemplate);
-      setPrePlan(fetchedPrePlan);
-      setPlan(fetchedPlan);
-      setGeneratedProposal(fetchedProposal);
+      console.log('Setting state with:', {
+        template: fetchedTemplate,
+        prePlan: fetchedPrePlan,
+        plan: fetchedPlan,
+        proposal: fetchedProposal
+      });
+      
+      // Set states with a callback to verify
+      setTemplate(prev => {
+        console.log('Setting template:', fetchedTemplate);
+        return fetchedTemplate;
+      });
+      setPrePlan(prev => {
+        console.log('Setting prePlan:', fetchedPrePlan);
+        return fetchedPrePlan;
+      });
+      setPlan(prev => {
+        console.log('Setting plan:', fetchedPlan);
+        return fetchedPlan;
+      });
+      setGeneratedProposal(prev => {
+        console.log('Setting generatedProposal:', fetchedProposal);
+        return fetchedProposal;
+      });
       setPitch(fetchedProposal.pitch || '');
       setOneOffInfo(fetchedProposal.one_off_info || {});
+      
+      // Switch to proposal tab after loading
+      setTabValue(3);
     } catch (error) {
       console.error('Error fetching proposal details:', error);
       setStatus('Error fetching proposal details');
     }
   };
 
-  const handleNewProposal = () => {
-    setSelectedProposal(null);
-    setTemplate(null);
-    setPrePlan(null);
-    setPlan(null);
-    setGeneratedProposal(null);
+  const handleNewProposal = async () => {
+    try {
+      setStatus('Creating new proposal...');
+      const result = await createNewProposal();
+      
+      // Set initial states
+      setSelectedProposal(result.proposal);
+      setTemplate(result.template);
+      setPrePlan(null);
+      setPlan(null);
+      setGeneratedProposal(null);
+      setPitch('');
+      setOneOffInfo({});
+      setTabValue(0); // Switch to template tab
+      setStatus('New proposal created successfully');
+      
+      // Refresh proposals list
+      await fetchProposals();
+    } catch (error) {
+      console.error('Error creating new proposal:', error);
+      setStatus('Error creating new proposal');
+    }
   };
 
   const handleTemplateUpload = async (templateId) => {
@@ -183,13 +234,6 @@ const ProposalGeneration = () => {
 
   const handleOneOffInfoSubmit = async (info) => {
     setOneOffInfo(info);
-    try {
-      await submitOneOffInfo(selectedProposal.proposal_id, info);
-      setStatus('One-off information submitted successfully');
-    } catch (error) {
-      console.error('Error submitting one-off information:', error);
-      setStatus('Error submitting one-off information');
-    }
   };
 
   const handlePitchSubmit = async () => {
@@ -259,11 +303,14 @@ const ProposalGeneration = () => {
   
         switch (message.type) {
           case 'section':
-            setGeneratedProposal((prev) => [...(prev || []), message.data]);
+            setGeneratedProposal((prev) => {
+              const updatedSections = Array.isArray(prev) ? [...prev, message.data] : [message.data];
+              return { ...prev, sections: updatedSections };
+            });
             setStatus(`Generated section: ${message.data.name}`);
             break;
           case 'complete':
-            setGeneratedProposal(message.data.sections);
+            setGeneratedProposal(message.data);
             setStatus('Proposal generation completed');
             setGeneratingProposal(false);
             break;
@@ -316,7 +363,7 @@ const ProposalGeneration = () => {
   const handleResetPart = async (part) => {
     try {
       setStatus(`Resetting ${part}...`);
-      await resetProposalPart(selectedProposal.template_id, part);
+      await resetProposalPart(selectedProposal.proposal_id, part);
       if (part === 'pre-plan') setPrePlan(null);
       if (part === 'plan') setPlan(null);
       if (part === 'proposal') setGeneratedProposal(null);
@@ -371,46 +418,107 @@ const ProposalGeneration = () => {
     }
   };
 
-  const renderResearchPlan = (researchPlan, expandedSection, handleChange, proposalId, setPrePlan, setStatus) => {
-    let parsedPlan;
+  const handleNameEdit = () => {
+    setProposalName(selectedProposal.name);
+    setEditingName(true);
+  };
+
+  const handleNameSave = async () => {
     try {
-      parsedPlan = typeof researchPlan === 'string' ? JSON.parse(researchPlan) : researchPlan;
+      const updatedProposal = await updateProposalName(selectedProposal.proposal_id, proposalName);
+      setSelectedProposal(updatedProposal);
+      setEditingName(false);
+      setStatus('Proposal name updated successfully');
     } catch (error) {
-      console.error('Error parsing research plan:', error);
-      return (
-        <Paper elevation={3} sx={{ p: 2, mb: 2, bgcolor: '#ffebee' }}>
-          <Typography color="error" variant="h6" gutterBottom>Error: Invalid Research Plan Data</Typography>
-          <Typography>
-            Unable to parse the research plan data. Please check the data format.
-          </Typography>
-        </Paper>
-      );
+      setStatus('Error updating proposal name');
     }
+  };
 
-    if (!parsedPlan || typeof parsedPlan !== 'object') {
-      console.error('Invalid research plan data:', parsedPlan);
-      return (
-        <Paper elevation={3} sx={{ p: 2, mb: 2, bgcolor: '#ffebee' }}>
-          <Typography color="error" variant="h6" gutterBottom>Error: Invalid Research Plan Data</Typography>
-          <Typography>
-            The research plan data is not in the expected format.
-          </Typography>
-        </Paper>
-      );
+  const handleEditTemplate = () => {
+    if (!template) {
+      setStatus('No template to edit');
+      return;
     }
-
-    const handleReset = async () => {
-      try {
-        setStatus('Resetting research plan...');
-        await resetProposalPart(proposalId, 'pre_plan');
-        setPrePlan(null);
-        setStatus('Research plan reset successfully');
-      } catch (error) {
-        console.error('Error resetting research plan:', error);
-        setStatus('Error resetting research plan');
-      }
+    const templateCopy = {
+      ...JSON.parse(JSON.stringify(template)),
+      template_id: template.id
     };
+    setEditingTemplate(templateCopy);
+    setTemplateDialogOpen(true);
+  };
 
+  const handleSaveTemplate = async (templateToSave) => {
+    // Use the passed template or fall back to editingTemplate
+    const templateData = templateToSave || editingTemplate;
+    
+    if (!templateData?.sections) {
+      console.log('Invalid template structure:', templateData);
+      setStatus('Invalid template structure');
+      return;
+    }
+
+    setIsTemplateLoading(true);
+    try {
+      console.log('Attempting to save template:', {
+        templateId: template.id,
+        templateData: templateData,
+        sections: templateData.sections
+      });
+      const updatedTemplate = await updateTemplate(template.id, templateData);
+      console.log('Received updated template:', updatedTemplate);
+      setTemplate(updatedTemplate);
+      setTemplateDialogOpen(false);
+      setStatus('Template updated successfully');
+    } catch (error) {
+      console.error('Error in handleSaveTemplate:', error);
+      setStatus(`Error updating template: ${error.message}`);
+    } finally {
+      setIsTemplateLoading(false);
+    }
+  };
+
+  const handleImproveTemplate = async () => {
+    if (!selectedProposal?.pitch) {
+      setStatus('Please add a pitch before improving the template');
+      return;
+    }
+
+    setIsTemplateImproving(true);
+    try {
+      setStatus('Improving template with AI...');
+      const improvedTemplate = await improveTemplate(
+        template.id,
+        selectedProposal.pitch,
+        selectedProposal.name
+      );
+      setTemplate(improvedTemplate);
+      setStatus('Template improved successfully');
+    } catch (error) {
+      setStatus(`Error improving template: ${error.message}`);
+    } finally {
+      setIsTemplateImproving(false);
+    }
+  };
+
+  const handleDeleteClick = () => {
+    setDeleteDialogOpen(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    try {
+      await deleteProposal(selectedProposal.proposal_id);
+      setDeleteDialogOpen(false);
+      setSelectedProposal(null);
+      await fetchProposals(); // Refresh the list
+      setStatus('Proposal deleted successfully');
+    } catch (error) {
+      setStatus('Error deleting proposal');
+    }
+  };
+
+  const renderResearchPlan = (researchPlan, expandedSection, handleChange, proposalId, setPrePlan, setStatus) => {
+    console.log('Rendering research plan:', researchPlan);
+    
     return (
       <Paper elevation={3} sx={{ p: 2, mb: 2 }}>
         <Accordion expanded={expandedSection === 'researchPlan'} onChange={handleChange('researchPlan')}>
@@ -419,52 +527,34 @@ const ProposalGeneration = () => {
           </AccordionSummary>
           <AccordionDetails>
             <Box sx={{ mb: 2 }}>
-              <Button variant="outlined" color="secondary" onClick={handleReset}>
+              <Button variant="outlined" color="secondary" onClick={() => handleResetPart('pre-plan')}>
                 Reset Research Plan
               </Button>
             </Box>
-            {Object.entries(parsedPlan).map(([sectionName, sectionData]) => {
-              const contentHighlights = sectionData?.content_highlights || [];
-              const prepNotes = sectionData?.proposal_prep_notes || [];
-              const styleNotes = sectionData?.tone_style_notes || [];
-
-              return (
-                <Accordion key={sectionName}>
-                  <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                    <Typography>{sectionName}</Typography>
-                  </AccordionSummary>
-                  <AccordionDetails>
-                    <Box sx={{ width: '100%', maxWidth: '100%', overflowX: 'auto' }}>
-                      <Typography variant="subtitle1">Content Highlights:</Typography>
-                      <List>
-                        {contentHighlights.map((item, index) => (
-                          <ListItem key={index}>
-                            <ListItemText primary={item} />
-                          </ListItem>
-                        ))}
-                      </List>
-                      <Typography variant="subtitle1">Proposal Prep Notes:</Typography>
-                      <List>
-                        {prepNotes.map((item, index) => (
-                          <ListItem key={index}>
-                            <ListItemText primary={item} />
-                          </ListItem>
-                        ))}
-                      </List>
-                      <Typography variant="subtitle1">Tone & Style Notes:</Typography>
-                      <List>
-                        {styleNotes.map((item, index) => (
-                          <ListItem key={index}>
-                            <ListItemText primary={item} />
-                          </ListItem>
-                        ))}
-                      </List>
-                      {renderEditableSection('pre-plan', sectionName, sectionData)}
-                    </Box>
-                  </AccordionDetails>
-                </Accordion>
-              );
-            })}
+            {Object.entries(researchPlan).map(([sectionName, sectionData]) => (
+              <Accordion key={sectionName}>
+                <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                  <Typography>{sectionName}</Typography>
+                </AccordionSummary>
+                <AccordionDetails>
+                  <Box sx={{ width: '100%', maxWidth: '100%', overflowX: 'auto' }}>
+                    {Object.entries(sectionData).map(([key, items]) => (
+                      <div key={key}>
+                        <Typography variant="subtitle1">{key}:</Typography>
+                        <List>
+                          {Array.isArray(items) && items.map((item, index) => (
+                            <ListItem key={index}>
+                              <ListItemText primary={item} />
+                            </ListItem>
+                          ))}
+                        </List>
+                      </div>
+                    ))}
+                    {renderEditableSection('pre-plan', sectionName, sectionData)}
+                  </Box>
+                </AccordionDetails>
+              </Accordion>
+            ))}
           </AccordionDetails>
         </Accordion>
       </Paper>
@@ -472,30 +562,8 @@ const ProposalGeneration = () => {
   };
 
   const renderPlan = (plan, expandedSection, handleChange, proposalId, setPlan, setStatus) => {
-    const handleReset = async () => {
-      try {
-        setStatus('Resetting plan...');
-        await resetProposalPart(proposalId, 'plan');
-        setPlan(null);
-        setStatus('Plan reset successfully');
-      } catch (error) {
-        console.error('Error resetting plan:', error);
-        setStatus('Error resetting plan');
-      }
-    };
-
-    if (!plan || typeof plan !== 'object') {
-      console.error('Invalid plan data:', plan);
-      return (
-        <Paper elevation={3} sx={{ p: 2, mb: 2, bgcolor: '#ffebee' }}>
-          <Typography color="error" variant="h6" gutterBottom>Error: Invalid Plan Data</Typography>
-          <Typography>
-            The plan data is not in the expected format.
-          </Typography>
-        </Paper>
-      );
-    }
-
+    console.log('Rendering plan:', plan);
+    
     return (
       <Paper elevation={3} sx={{ p: 2, mb: 2 }}>
         <Accordion expanded={expandedSection === 'plan'} onChange={handleChange('plan')}>
@@ -504,7 +572,7 @@ const ProposalGeneration = () => {
           </AccordionSummary>
           <AccordionDetails>
             <Box sx={{ mb: 2 }}>
-              <Button variant="outlined" color="secondary" onClick={handleReset}>
+              <Button variant="outlined" color="secondary" onClick={() => handleResetPart('plan')}>
                 Reset Plan
               </Button>
             </Box>
@@ -516,7 +584,7 @@ const ProposalGeneration = () => {
                 <AccordionDetails>
                   <Box sx={{ width: '100%', maxWidth: '100%', overflowX: 'auto' }}>
                     <List>
-                      {planItems.map((item, index) => (
+                      {Array.isArray(planItems) && planItems.map((item, index) => (
                         <ListItem key={index}>
                           <ListItemText primary={item} />
                         </ListItem>
@@ -598,8 +666,152 @@ const ProposalGeneration = () => {
     );
   };
 
+  const handleTabChange = (event, newValue) => {
+    setTabValue(newValue);
+  };
+
+  const TemplateEditDialog = () => {
+    // Local state for editing - initialized when dialog opens
+    const [localSections, setLocalSections] = useState([]);
+
+    // Initialize local state when dialog opens
+    useEffect(() => {
+      if (templateDialogOpen && editingTemplate?.sections) {
+        console.log('Initializing localSections with:', editingTemplate.sections);
+        setLocalSections(editingTemplate.sections.map(section => ({ ...section })));
+      }
+    }, [templateDialogOpen, editingTemplate]);
+
+    const handleSectionChange = (index, field, value) => {
+      console.log('Section change:', { index, field, value });
+      setLocalSections(prev => {
+        const updated = [...prev];
+        updated[index] = { ...updated[index], [field]: value };
+        console.log('Updated localSections:', updated);
+        return updated;
+      });
+    };
+
+    const handleAddSection = () => {
+      setLocalSections(prev => [
+        ...prev,
+        { name: '', content_type: 'text', instructions: '', constraints: {} }
+      ]);
+    };
+
+    const handleDeleteSection = (index) => {
+      setLocalSections(prev => prev.filter((_, i) => i !== index));
+    };
+
+    const handleSave = () => {
+      console.log('Save clicked, current state:', {
+        localSections,
+        editingTemplate
+      });
+
+      // Create the updated template object
+      const updatedTemplate = {
+        ...editingTemplate,
+        sections: localSections
+      };
+      
+      console.log('About to save template:', updatedTemplate);
+      
+      // Update the state and save in one go
+      setEditingTemplate(updatedTemplate);
+      
+      // Pass the updated template directly to handleSaveTemplate
+      // instead of relying on the state update
+      handleSaveTemplate(updatedTemplate);
+    };
+
+    return (
+      <Dialog 
+        open={templateDialogOpen} 
+        onClose={() => !isTemplateLoading && setTemplateDialogOpen(false)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>Edit Template Structure</DialogTitle>
+        <DialogContent>
+          <Box sx={{ mt: 2 }}>
+            <Typography variant="subtitle1" gutterBottom>Sections</Typography>
+            <List>
+              {localSections.map((section, index) => (
+                <ListItem key={index}>
+                  <Box sx={{ width: '100%' }}>
+                    <TextField
+                      fullWidth
+                      label="Section Name"
+                      value={section.name || ''}
+                      onChange={(e) => handleSectionChange(index, 'name', e.target.value)}
+                      error={!section.name}
+                      helperText={!section.name && "Section name is required"}
+                      sx={{ mb: 1 }}
+                    />
+                    <TextField
+                      fullWidth
+                      label="Instructions"
+                      value={section.instructions || ''}
+                      onChange={(e) => handleSectionChange(index, 'instructions', e.target.value)}
+                      multiline
+                      rows={2}
+                    />
+                  </Box>
+                  <IconButton 
+                    onClick={() => handleDeleteSection(index)}
+                    disabled={isTemplateLoading}
+                  >
+                    <DeleteIcon />
+                  </IconButton>
+                </ListItem>
+              ))}
+              <ListItem>
+                <Button
+                  startIcon={<AddIcon />}
+                  onClick={handleAddSection}
+                  disabled={isTemplateLoading}
+                >
+                  Add Section
+                </Button>
+              </ListItem>
+            </List>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button 
+            onClick={() => setTemplateDialogOpen(false)}
+            disabled={isTemplateLoading}
+          >
+            Cancel
+          </Button>
+          <LoadingButton 
+            loading={isTemplateLoading}
+            onClick={handleSave}
+            variant="contained"
+            disabled={!localSections.every(section => section.name)}
+          >
+            Save
+          </LoadingButton>
+        </DialogActions>
+      </Dialog>
+    );
+  };
+
+  const handleImproveWithAI = async () => {
+    try {
+      setStatus('Improving pitch with AI...');
+      const improvedPitch = await improvePitch(selectedProposal.proposal_id, pitch);
+      setPitch(improvedPitch);
+      setStatus('Pitch improved successfully. Review and submit if you like the changes.');
+    } catch (error) {
+      console.error('Error improving pitch:', error);
+      setStatus('Error improving pitch');
+    }
+  };
+
   return (
-    <Box sx={{ display: 'flex', ...globalStyles }}>
+    <Box sx={{ display: 'flex' }}>
       <AppBar position="fixed" sx={{ zIndex: (theme) => theme.zIndex.drawer + 1 }}>
         <Toolbar>
           <IconButton
@@ -636,175 +848,297 @@ const ProposalGeneration = () => {
               <ListItemText primary="Create New Proposal" />
               <AddIcon />
             </ListItem>
-            {proposals.map((proposal) => (
-              <ListItem button key={proposal.proposal_id} onClick={() => handleProposalSelect(proposal)}>
-                <ListItemText 
-                  primary={`Proposal ${proposal.proposal_id}`}
-                  secondary={`Template ID: ${proposal.template_id}`}
-                />
+            {console.log('Rendering proposals:', proposals)}
+            {Array.isArray(proposals) && proposals.length > 0 ? (
+              proposals.map((proposal) => {
+                console.log('Rendering proposal:', proposal);
+                return (
+                  <ListItem 
+                    button 
+                    key={proposal.proposal_id} 
+                    onClick={() => handleProposalSelect(proposal)}
+                    selected={selectedProposal?.proposal_id === proposal.proposal_id}
+                  >
+                    <ListItemText 
+                      primary={proposal.name}
+                      secondary={`Template ID: ${proposal.template_id || 'None'}`}
+                    />
+                  </ListItem>
+                );
+              })
+            ) : (
+              <ListItem>
+                <ListItemText primary="No proposals found" />
               </ListItem>
-            ))}
+            )}
           </List>
         </Box>
       </Drawer>
       <Box component="main" sx={{ flexGrow: 1, p: 3 }}>
         <Toolbar />
-        {!selectedProposal ? (
-          <Paper elevation={3} sx={{ p: 2, mb: 2 }}>
-            <TemplateUpload onUploadSuccess={handleTemplateUpload} />
-          </Paper>
-        ) : (
+        {selectedProposal && (
           <>
-            <Typography variant="h5" gutterBottom>
-              Proposal {selectedProposal.proposal_id}
-            </Typography>
-            <Grid container spacing={3}>
-              <Grid item xs={12} md={6}>
-                <OneOffInfoForm templateId={selectedProposal.template_id} proposalId={selectedProposal.proposal_id} onSubmit={handleOneOffInfoSubmit} />
-              </Grid>
-              <Grid item xs={12} md={6}>
-                <Paper elevation={3} sx={{ p: 2, mb: 2 }}>
-                  <Typography variant="h6" gutterBottom>Pitch</Typography>
+            <Box sx={{ 
+              display: 'flex', 
+              justifyContent: 'space-between', 
+              alignItems: 'center',
+              mb: 3 
+            }}>
+              <Box>
+                {editingName ? (
                   <TextField
-                    fullWidth
-                    label="Pitch"
-                    value={pitch}
-                    onChange={(e) => setPitch(e.target.value)}
-                    multiline
-                    rows={4}
-                    margin="normal"
-                    variant="outlined"
+                    value={proposalName}
+                    onChange={(e) => setProposalName(e.target.value)}
+                    InputProps={{
+                      endAdornment: (
+                        <Button onClick={handleNameSave}>Save</Button>
+                      ),
+                    }}
                   />
-                  <Box mt={2}>
-                    <Button variant="contained" color="primary" onClick={handlePitchSubmit}>
-                      Submit Pitch
-                    </Button>
+                ) : (
+                  <Box 
+                    onClick={handleNameEdit}
+                    sx={{ 
+                      cursor: 'pointer',
+                      '&:hover': {
+                        backgroundColor: 'rgba(0, 0, 0, 0.04)'
+                      },
+                      display: 'flex',
+                      alignItems: 'center',
+                      p: 1,
+                      borderRadius: 1
+                    }}
+                  >
+                    <Typography variant="h5" component="div">
+                      {selectedProposal.name}
+                    </Typography>
+                    <EditIcon sx={{ ml: 1, fontSize: '0.8em' }} />
                   </Box>
-                </Paper>
-              </Grid>
-              <Grid item xs={12}>
-                <DocumentUpload templateId={selectedProposal.template_id} />
-              </Grid>
-            </Grid>
-            {prePlan && renderResearchPlan(prePlan, expandedSection, handleChange, selectedProposal.proposal_id, setPrePlan, setStatus)}
-            {plan && renderPlan(plan, expandedSection, handleChange, selectedProposal.proposal_id, setPlan, setStatus)}
-            {generatedProposal && generatedProposal.sections && (
-              <Paper elevation={3} sx={{ p: 2, mb: 2 }}>
-                <Typography variant="h6" gutterBottom>Generated Proposal</Typography>
-                <Button variant="outlined" color="secondary" onClick={() => handleResetPart('proposal')} disabled={!generatedProposal}>Reset Proposal</Button>
-                {generatedProposal.sections.map((section) => (
-                  <Accordion key={section.name}>
-                    <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                      <Typography>{section.name}</Typography>
-                    </AccordionSummary>
-                    <AccordionDetails>
-                      <Box sx={{ width: '100%', maxWidth: '100%', overflowX: 'auto' }}>
-                        <ReactMarkdown remarkPlugins={[remarkGfm]}>{section.content}</ReactMarkdown>
-                        {renderEditableSection('proposal', section.name, section.content)}
-                      </Box>
-                    </AccordionDetails>
-                  </Accordion>
-                ))}
-              </Paper>
-            )}
-            <Box sx={{ mt: 2, display: 'flex', gap: 2 }}>
-              {!isPrePlanComplete && (
-                <Button 
-                  variant="contained" 
-                  color="primary" 
-                  onClick={handlePlanProposal}
-                  disabled={!template}
-                >
-                  {prePlan ? 'Continue Planning' : 'Plan Proposal'}
-                </Button>
-              )}
-              
-              {isPrePlanComplete && !isPlanComplete && (
-                <Button 
-                  variant="contained" 
-                  color="primary" 
-                  onClick={handlePlanProposal}
-                  disabled={!template}
-                >
-                  Continue Planning
-                </Button>
-              )}
-              
-              {isPlanComplete && !isProposalComplete && (
-                <Button 
-                  variant="contained" 
-                  color="primary" 
-                  onClick={handleGenerateProposal}
-                  disabled={!plan}
-                >
-                  {generatedProposal ? 'Continue Generating' : 'Generate Proposal'}
-                </Button>
-              )}
-              
-              {isProposalComplete && (
-                <Button 
-                  variant="contained" 
-                  color="secondary" 
-                  onClick={handleReviewProposal}
-                >
-                  Review Proposal
-                </Button>
-              )}
+                )}
+              </Box>
+
+              <Button
+                variant="outlined"
+                color="error"
+                startIcon={<DeleteIcon />}
+                onClick={handleDeleteClick}
+              >
+                Delete Proposal
+              </Button>
             </Box>
-            {proposalReview && (
-  <Paper elevation={3} sx={{ p: 2, mb: 2 }}>
-    <Typography variant="h6" gutterBottom>Proposal Review</Typography>
-    <Typography variant="subtitle1" gutterBottom>Overall Assessment</Typography>
-    <Typography paragraph>{proposalReview.overall_assessment}</Typography>
-    
-    <Typography variant="subtitle1" gutterBottom>Criteria Assessment</Typography>
-    {proposalReview.criteria_addressed.map((criterion, index) => (
-      <Accordion key={index}>
-        <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-          <Typography>{criterion.criterion}</Typography>
-        </AccordionSummary>
-        <AccordionDetails>
-          <Typography variant="body2" gutterBottom><strong>Assessment:</strong></Typography>
-          <Typography paragraph>{criterion.assessment}</Typography>
-          <Typography variant="body2" gutterBottom><strong>Suggestions:</strong></Typography>
-          <Typography>{criterion.suggestions}</Typography>
-        </AccordionDetails>
-      </Accordion>
-    ))}
-    
-    {proposalReview.missing_elements.length > 0 && (
-      <>
-        <Typography variant="subtitle1" gutterBottom sx={{ mt: 2 }}>Missing Elements</Typography>
-        {proposalReview.missing_elements.map((element, index) => (
-          <Accordion key={index}>
-            <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-              <Typography>{element.element}</Typography>
-            </AccordionSummary>
-            <AccordionDetails>
-              <Typography>{element.suggestion}</Typography>
-            </AccordionDetails>
-          </Accordion>
-        ))}
-      </>
-    )}
-    
-    {proposalReview.general_improvements.length > 0 && (
-      <>
-        <Typography variant="subtitle1" gutterBottom sx={{ mt: 2 }}>General Improvements</Typography>
-        <ul>
-          {proposalReview.general_improvements.map((improvement, index) => (
-            <li key={index}><Typography>{improvement}</Typography></li>
-          ))}
-        </ul>
-      </>
-    )}
-  </Paper>
-)}
+
+            <Tabs value={tabValue} onChange={handleTabChange}>
+              <Tab label="Pitch" />
+              <Tab label="Template" />
+              <Tab label="Documents" />
+              <Tab label="Proposal" />
+            </Tabs>
+
+            <TabPanel value={tabValue} index={1}>
+              <TemplateSection 
+                template={template}
+                handleEditTemplate={handleEditTemplate}
+                handleImproveTemplate={handleImproveTemplate}
+                handleTemplateUpload={handleTemplateUpload}
+                isTemplateLoading={isTemplateLoading}
+                isTemplateImproving={isTemplateImproving}
+                selectedProposal={selectedProposal}
+                handleOneOffInfoSubmit={handleOneOffInfoSubmit}
+                generatedProposal={generatedProposal}
+              />
+            </TabPanel>
+
+            <TabPanel value={tabValue} index={0}>
+              <PitchSection 
+                pitch={pitch}
+                setPitch={setPitch}
+                handlePitchSubmit={handlePitchSubmit}
+                handleImproveWithAI={handleImproveWithAI}
+              />
+            </TabPanel>
+
+            <TabPanel value={tabValue} index={2}>
+              <DocumentUpload 
+                templateId={selectedProposal.template_id} 
+                proposalId={selectedProposal.proposal_id}
+              />
+            </TabPanel>
+
+            <TabPanel value={tabValue} index={3}>
+              {console.log('Rendering proposal tab with:', { prePlan, plan, generatedProposal })}
+              
+              {/* Research Plan Section */}
+              {prePlan ? (
+                <>
+                  {console.log('Rendering research plan with:', prePlan)}
+                  {renderResearchPlan(prePlan, expandedSection, handleChange, selectedProposal.proposal_id, setPrePlan, setStatus)}
+                </>
+              ) : (
+                <Typography>No research plan available</Typography>
+              )}
+
+              {/* Plan Section */}
+              {plan ? (
+                <>
+                  {console.log('Rendering plan with:', plan)}
+                  {renderPlan(plan, expandedSection, handleChange, selectedProposal.proposal_id, setPlan, setStatus)}
+                </>
+              ) : (
+                <Typography>No plan available</Typography>
+              )}
+
+              {/* Generated Proposal Section */}
+              {generatedProposal && generatedProposal.sections && (
+                <>
+                  {console.log('Rendering generated proposal with:', generatedProposal)}
+                  <Paper elevation={3} sx={{ p: 2, mb: 2 }}>
+                    <Typography variant="h6" gutterBottom>Generated Proposal</Typography>
+                    <Button 
+                      variant="outlined" 
+                      color="secondary" 
+                      onClick={() => handleResetPart('proposal')} 
+                      disabled={!generatedProposal}
+                      sx={{ mb: 2 }}
+                    >
+                      Reset Proposal
+                    </Button>
+                    {generatedProposal.sections.map((section) => (
+                      <Accordion key={section.name}>
+                        <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                          <Typography>{section.name}</Typography>
+                        </AccordionSummary>
+                        <AccordionDetails>
+                          <Box sx={{ width: '100%', maxWidth: '100%', overflowX: 'auto' }}>
+                            <ReactMarkdown remarkPlugins={[remarkGfm]}>{section.content}</ReactMarkdown>
+                            {renderEditableSection('proposal', section.name, section.content)}
+                          </Box>
+                        </AccordionDetails>
+                      </Accordion>
+                    ))}
+                  </Paper>
+                </>
+              )}
+
+              {/* Action Buttons */}
+              <Box sx={{ mt: 2, display: 'flex', gap: 2 }}>
+                {!isPrePlanComplete && (
+                  <Button 
+                    variant="contained" 
+                    color="primary" 
+                    onClick={handlePlanProposal}
+                    disabled={!template}
+                  >
+                    {prePlan ? 'Continue Planning' : 'Plan Proposal'}
+                  </Button>
+                )}
+                
+                {isPrePlanComplete && !isPlanComplete && (
+                  <Button 
+                    variant="contained" 
+                    color="primary" 
+                    onClick={handlePlanProposal}
+                    disabled={!template}
+                  >
+                    Continue Planning
+                  </Button>
+                )}
+                
+                {isPlanComplete && !isProposalComplete && (
+                  <Button 
+                    variant="contained" 
+                    color="primary" 
+                    onClick={handleGenerateProposal}
+                    disabled={!plan}
+                  >
+                    {generatedProposal ? 'Continue Generating' : 'Generate Proposal'}
+                  </Button>
+                )}
+                
+                {isProposalComplete && (
+                  <Button 
+                    variant="contained" 
+                    color="secondary" 
+                    onClick={handleReviewProposal}
+                  >
+                    Review Proposal
+                  </Button>
+                )}
+              </Box>
+
+              {/* Review Section */}
+              {proposalReview && (
+                <Paper elevation={3} sx={{ p: 2, mb: 2 }}>
+                  <Typography variant="h6" gutterBottom>Proposal Review</Typography>
+                  <Typography variant="subtitle1" gutterBottom>Overall Assessment</Typography>
+                  <Typography paragraph>{proposalReview.overall_assessment}</Typography>
+                  
+                  <Typography variant="subtitle1" gutterBottom>Criteria Assessment</Typography>
+                  {proposalReview.criteria_addressed.map((criterion, index) => (
+                    <Accordion key={index}>
+                      <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                        <Typography>{criterion.criterion}</Typography>
+                      </AccordionSummary>
+                      <AccordionDetails>
+                        <Typography variant="body2" gutterBottom><strong>Assessment:</strong></Typography>
+                        <Typography paragraph>{criterion.assessment}</Typography>
+                        <Typography variant="body2" gutterBottom><strong>Suggestions:</strong></Typography>
+                        <Typography>{criterion.suggestions}</Typography>
+                      </AccordionDetails>
+                    </Accordion>
+                  ))}
+                  
+                  {proposalReview.missing_elements.length > 0 && (
+                    <>
+                      <Typography variant="subtitle1" gutterBottom sx={{ mt: 2 }}>Missing Elements</Typography>
+                      {proposalReview.missing_elements.map((element, index) => (
+                        <Accordion key={index}>
+                          <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                            <Typography>{element.element}</Typography>
+                          </AccordionSummary>
+                          <AccordionDetails>
+                            <Typography>{element.suggestion}</Typography>
+                          </AccordionDetails>
+                        </Accordion>
+                      ))}
+                    </>
+                  )}
+                  
+                  {proposalReview.general_improvements.length > 0 && (
+                    <>
+                      <Typography variant="subtitle1" gutterBottom sx={{ mt: 2 }}>General Improvements</Typography>
+                      <ul>
+                        {proposalReview.general_improvements.map((improvement, index) => (
+                          <li key={index}><Typography>{improvement}</Typography></li>
+                        ))}
+                      </ul>
+                    </>
+                  )}
+                </Paper>
+              )}
+            </TabPanel>
           </>
         )}
-        <Typography variant="body1" style={{ marginTop: '20px' }}>
+        <Typography variant="body1" sx={{ mt: 2 }}>
           {status}
         </Typography>
+        <TemplateEditDialog />
+        <Dialog
+          open={deleteDialogOpen}
+          onClose={() => setDeleteDialogOpen(false)}
+        >
+          <DialogTitle>Delete Proposal</DialogTitle>
+          <DialogContent>
+            <DialogContentText>
+              Are you sure you want to delete this proposal? This action cannot be undone.
+            </DialogContentText>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setDeleteDialogOpen(false)}>Cancel</Button>
+            <Button onClick={handleDeleteConfirm} color="error" autoFocus>
+              Delete
+            </Button>
+          </DialogActions>
+        </Dialog>
       </Box>
     </Box>
   );
