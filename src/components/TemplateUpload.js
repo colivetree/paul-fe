@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Button, Typography } from '@mui/material';
 import { uploadTemplate } from '../services/api';
 
-const TemplateUpload = ({ onUploadSuccess }) => {
+const TemplateUpload = ({ onUploadSuccess, templateId }) => {
   const [file, setFile] = useState(null);
   const [status, setStatus] = useState('');
 
@@ -18,7 +18,7 @@ const TemplateUpload = ({ onUploadSuccess }) => {
 
     try {
       setStatus('Uploading...');
-      const response = await uploadTemplate(file);
+      const response = await uploadTemplate(file, templateId);
       setStatus('Template uploaded successfully');
       onUploadSuccess(response.template_id);
     } catch (error) {

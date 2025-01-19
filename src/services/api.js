@@ -35,12 +35,12 @@ const createWebSocketConnection = (url, handlers) => {
   return socket;
 };
 
-export const uploadTemplate = async (file) => {
+export const uploadTemplate = async (file, templateId) => {
   const formData = new FormData();
   formData.append('file', file);
   try {
-    console.log('Sending request to:', `${API_BASE_URL}/upload-template`);
-    const response = await api.post('/upload-template', formData, {
+    console.log('Sending request to:', `${API_BASE_URL}/templates/${templateId}/upload-template`);
+    const response = await api.post(`/templates/${templateId}/upload-template`, formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
@@ -50,10 +50,10 @@ export const uploadTemplate = async (file) => {
   } catch (error) {
     console.error('Error uploading template:', error);
     if (error.response) {
-      console.error('Error response:', error.response);  // Add this line
+      console.error('Error response:', error.response);
       throw new Error(error.response.data.detail || 'Server error');
     } else if (error.request) {
-      console.error('Error request:', error.request);  // Add this line
+      console.error('Error request:', error.request);
       throw new Error('No response received from server');
     } else {
       throw new Error('Error setting up the request');
@@ -461,16 +461,13 @@ export const generateTemplate = async (pitch, documentIds) => {
 
 export const createNewProposal = async () => {
   try {
-    // First create empty proposal
+    // Create proposal (which includes template creation)
     const proposalResponse = await api.post('/proposals');
     const proposal = proposalResponse.data;
-
-    // Then create empty template
-    const templateResponse = await api.post(`/templates/empty/${proposal.proposal_id}`);
     
     return {
       proposal: proposal,
-      template: templateResponse.data
+      template: await getTemplate(proposal.template_id)  // Get the template that was created
     };
   } catch (error) {
     console.error('Error creating new proposal:', error);

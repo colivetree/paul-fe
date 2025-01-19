@@ -58,6 +58,7 @@ const TemplateSection = ({
               </LoadingButton>
               <TemplateUpload 
                 onUploadSuccess={handleTemplateUpload} 
+                templateId={template.id}
                 buttonProps={{ 
                   variant: "outlined",
                   disabled: isTemplateLoading || isTemplateImproving 
@@ -66,7 +67,10 @@ const TemplateSection = ({
             </Box>
           </>
         ) : (
-          <TemplateUpload onUploadSuccess={handleTemplateUpload} />
+          <TemplateUpload 
+            onUploadSuccess={handleTemplateUpload}
+            templateId={selectedProposal?.template_id}
+          />
         )}
       </Paper>
 

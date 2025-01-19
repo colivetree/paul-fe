@@ -440,9 +440,9 @@ const ProposalGeneration = () => {
       return;
     }
     const templateCopy = {
-      ...JSON.parse(JSON.stringify(template)),
-      template_id: template.id
+      ...JSON.parse(JSON.stringify(template))
     };
+    console.log('Editing template:', templateCopy);
     setEditingTemplate(templateCopy);
     setTemplateDialogOpen(true);
   };
