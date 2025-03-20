@@ -1,8 +1,22 @@
 import axios from 'axios';
 
-const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'https://paul-service.nomadriver.co';
+// Use window.location to determine API URL
+// This approach works in both development and production without hard-coded URLs
+const getBaseUrl = () => {
+  // If we're running locally, use relative URLs
+  if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+    return '/api';
+  }
+  // In production, use the provided env var or fallback to production URL
+  return process.env.REACT_APP_API_BASE_URL || 'https://paul-service.nomadriver.co';
+};
+
+const API_BASE_URL = getBaseUrl();
 const WS_BASE_URL = API_BASE_URL.replace(/^http/, 'ws').replace(/^https/, 'wss');
 
+// Debug info
+console.log('window.RUNTIME_CONFIG:', window.RUNTIME_CONFIG);
+console.log('process.env.REACT_APP_API_BASE_URL:', process.env.REACT_APP_API_BASE_URL);
 console.log('API_BASE_URL:', API_BASE_URL);
 console.log('WS_BASE_URL:', WS_BASE_URL);
 
