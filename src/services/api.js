@@ -1,24 +1,50 @@
 import axios from 'axios';
 
-// Use window.location to determine API URL
-// This approach works in both development and production without hard-coded URLs
+// Debug environment variables early
+console.log('NODE_ENV:', process.env.NODE_ENV);
+console.log('REACT_APP_API_BASE_URL:', process.env.REACT_APP_API_BASE_URL);
+console.log('window.RUNTIME_CONFIG:', window.RUNTIME_CONFIG);
+
+// Use runtime config if available, otherwise fall back to determining from location
 const getBaseUrl = () => {
+  // Use runtime config values if available (set during build)
+  if (window.RUNTIME_CONFIG && window.RUNTIME_CONFIG.API_BASE_URL) {
+    console.log('Using API_BASE_URL from runtime config:', window.RUNTIME_CONFIG.API_BASE_URL);
+    return window.RUNTIME_CONFIG.API_BASE_URL;
+  }
+  
   // If we're running locally, use relative URLs
   if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+    console.log('Using relative API_BASE_URL for localhost');
     return '/api';
   }
+  
   // In production, use the provided env var or fallback to production URL
-  return process.env.REACT_APP_API_BASE_URL || 'https://paul-service.nomadriver.co';
+  const envUrl = process.env.REACT_APP_API_BASE_URL || 'https://paul-service.nomadriver.co';
+  console.log('Using API_BASE_URL from env var:', envUrl);
+  return envUrl;
+};
+
+// Use runtime config for WebSocket if available, otherwise derive from API URL
+const getWsBaseUrl = () => {
+  if (window.RUNTIME_CONFIG && window.RUNTIME_CONFIG.WS_BASE_URL) {
+    console.log('Using WS_BASE_URL from runtime config:', window.RUNTIME_CONFIG.WS_BASE_URL);
+    return window.RUNTIME_CONFIG.WS_BASE_URL;
+  }
+  
+  // Derive from API URL
+  const baseUrl = getBaseUrl();
+  const wsUrl = baseUrl.replace(/^http/, 'ws').replace(/^https/, 'wss');
+  console.log('Derived WS_BASE_URL:', wsUrl);
+  return wsUrl;
 };
 
 const API_BASE_URL = getBaseUrl();
-const WS_BASE_URL = API_BASE_URL.replace(/^http/, 'ws').replace(/^https/, 'wss');
+const WS_BASE_URL = getWsBaseUrl();
 
-// Debug info
-console.log('window.RUNTIME_CONFIG:', window.RUNTIME_CONFIG);
-console.log('process.env.REACT_APP_API_BASE_URL:', process.env.REACT_APP_API_BASE_URL);
-console.log('API_BASE_URL:', API_BASE_URL);
-console.log('WS_BASE_URL:', WS_BASE_URL);
+// Final URL information
+console.log('Final API_BASE_URL:', API_BASE_URL);
+console.log('Final WS_BASE_URL:', WS_BASE_URL);
 
 const api = axios.create({
   baseURL: API_BASE_URL,

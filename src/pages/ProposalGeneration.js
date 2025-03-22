@@ -844,7 +844,7 @@ const ProposalGeneration = () => {
         <Toolbar />
         <Box sx={{ overflow: 'auto' }}>
           <List>
-            <ListItem button onClick={handleNewProposal}>
+            <ListItem onClick={handleNewProposal} sx={{ cursor: 'pointer' }}>
               <ListItemText primary="Create New Proposal" />
               <AddIcon />
             </ListItem>
@@ -854,10 +854,10 @@ const ProposalGeneration = () => {
                 console.log('Rendering proposal:', proposal);
                 return (
                   <ListItem 
-                    button 
                     key={proposal.proposal_id} 
                     onClick={() => handleProposalSelect(proposal)}
                     selected={selectedProposal?.proposal_id === proposal.proposal_id}
+                    sx={{ cursor: 'pointer' }}
                   >
                     <ListItemText 
                       primary={proposal.name}

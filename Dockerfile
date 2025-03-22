@@ -13,19 +13,29 @@ RUN npm install
 # Copy the rest of the application code
 COPY . .
 
-# Debug environment variables and files
+# Set environment variables based on BUILD_ENV
 ARG BUILD_ENV=development
-RUN echo "BUILD_ENV = ${BUILD_ENV}"
-RUN ls -la .env*
-RUN cat .env.${BUILD_ENV}
-RUN cp .env.${BUILD_ENV} .env
-RUN cat .env
+ENV NODE_ENV=${BUILD_ENV}
 
-# Create a runtime config file
-RUN echo "window.RUNTIME_CONFIG = { API_BASE_URL: 'http://localhost/api', WS_BASE_URL: 'ws://localhost/api' };" > public/runtime-config.js
+# Debug environment variables
+RUN echo "BUILD_ENV = ${BUILD_ENV}"
+RUN echo "NODE_ENV = ${NODE_ENV}"
+RUN ls -la .env*
+RUN printenv | grep NODE
+
+# Create a runtime config file based on environment
+RUN if [ "$BUILD_ENV" = "development" ]; then \
+      echo "window.RUNTIME_CONFIG = { API_BASE_URL: 'http://localhost/api', WS_BASE_URL: 'ws://localhost/api' };" > public/runtime-config.js; \
+    else \
+      echo "window.RUNTIME_CONFIG = { API_BASE_URL: 'https://paul-service.nomadriver.co/api', WS_BASE_URL: 'wss://paul-service.nomadriver.co/api' };" > public/runtime-config.js; \
+    fi
 
 # Build for the specified environment
-RUN npm run build
+RUN if [ "$BUILD_ENV" = "development" ]; then \
+      npm run build:dev; \
+    else \
+      npm run build:prod; \
+    fi
 
 # Debug the built files to see if variables were injected
 RUN grep -r "paul-service.nomadriver.co" build/ || echo "No production URL found in build"

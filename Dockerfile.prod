@@ -4,6 +4,9 @@ FROM node:18-alpine as build
 # Set working directory
 WORKDIR /app
 
+# Set production environment
+ENV NODE_ENV=production
+
 # Copy package files
 COPY package*.json ./
 
@@ -12,6 +15,9 @@ RUN npm ci
 
 # Copy source code
 COPY . .
+
+# Create the runtime config for production
+RUN echo "window.RUNTIME_CONFIG = { API_BASE_URL: 'https://paul-service.nomadriver.co/api', WS_BASE_URL: 'wss://paul-service.nomadriver.co/api' };" > public/runtime-config.js
 
 # Build the application
 RUN npm run build
