@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { 
   Button, 
   Typography, 
@@ -133,7 +133,7 @@ const GoogleDocsImport = ({ templateId, documentType = 'ancillary', onImportComp
               {documents.map((doc) => (
                 <ListItem 
                   key={doc.id} 
-                  button 
+                  button={true}  
                   selected={selectedDoc && selectedDoc.id === doc.id}
                   onClick={() => handleSelectDoc(doc)}
                 >

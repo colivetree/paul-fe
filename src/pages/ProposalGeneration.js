@@ -12,6 +12,7 @@ import remarkGfm from 'remark-gfm';
 import OneOffInfoForm from '../components/OneOffInfoForm';
 import DocumentUpload from '../components/DocumentUpload';
 import TemplateUpload from '../components/TemplateUpload';
+import ProposalExportButton from '../components/google/ProposalExportButton';
 import { 
   generateProposal, getProposals, getTemplate, getOneOffInfo, reviewProposal, 
   planProposal, getProposalPrePlan, getProposalPlan, resetProposalPart, uploadAncillaryDocs,
@@ -103,7 +104,7 @@ const ProposalGeneration = () => {
     console.log("Template sections:", templateSections);
     console.log("Pre-plan structure:", JSON.stringify(parsedPrePlan, null, 2));
     
-    setIsPrePlanComplete(prePlanSections === templateSections);
+    setIsPrePlanComplete(prePlanSections === templateSections && prePlanSections > 0);
   };
 
   const checkPlanComplete = () => {
@@ -112,17 +113,17 @@ const ProposalGeneration = () => {
     const templateSections = template.sections.length;
     console.log("Plan sections:", planSections);
     console.log("Template sections:", templateSections);
-    setIsPlanComplete(planSections === templateSections);
+    setIsPlanComplete(planSections === templateSections && planSections > 0);
   };
 
   const checkProposalComplete = () => {
     if (!generatedProposal || !template) return;
-    if (!generatedProposal.sections) return;
+    if (!generatedProposal.sections || generatedProposal.sections.length === 0) return;
     const proposalSections = generatedProposal.sections.length;
     const templateSections = template.sections.length;
     console.log("Proposal sections:", proposalSections);
     console.log("Template sections:", templateSections);
-    setIsProposalComplete(proposalSections === templateSections);
+    setIsProposalComplete(proposalSections === templateSections && proposalSections > 0);
   };
 
   const fetchProposals = async () => {
@@ -992,7 +993,15 @@ const ProposalGeneration = () => {
                 <>
                   {console.log('Rendering generated proposal with:', generatedProposal)}
                   <Paper elevation={3} sx={{ p: 2, mb: 2 }}>
-                    <Typography variant="h6" gutterBottom>Generated Proposal</Typography>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                      <Typography variant="h6">Generated Proposal</Typography>
+                      {isProposalComplete && (
+                        <ProposalExportButton 
+                          proposalId={selectedProposal.proposal_id}
+                          proposalTitle={selectedProposal.name}
+                        />
+                      )}
+                    </Box>
                     <Button 
                       variant="outlined" 
                       color="secondary" 
@@ -1028,7 +1037,7 @@ const ProposalGeneration = () => {
                     onClick={handlePlanProposal}
                     disabled={!template}
                   >
-                    {prePlan ? 'Continue Planning' : 'Plan Proposal'}
+                    {(prePlan && prePlan.length > 0) ? 'Continue Planning' : 'Plan Proposal'}
                   </Button>
                 )}
                 
@@ -1050,7 +1059,7 @@ const ProposalGeneration = () => {
                     onClick={handleGenerateProposal}
                     disabled={!plan}
                   >
-                    {generatedProposal ? 'Continue Generating' : 'Generate Proposal'}
+                    {(generatedProposal && generatedProposal.sections.length > 0) ? 'Continue Generating' : 'Generate Proposal'}
                   </Button>
                 )}
                 

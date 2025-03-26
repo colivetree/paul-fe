@@ -55,6 +55,8 @@ const api = axios.create({
   }
 });
 
+export default api;
+
 const createWebSocketConnection = (url, handlers) => {
   const socket = new WebSocket(url);
   

@@ -43,10 +43,6 @@ const DocumentUpload = ({ templateId }) => {
     setAncillaryDocs(Array.from(event.target.files));
   };
 
-  const handleGuideProposalsChange = (event) => {
-    setGuideProposals(Array.from(event.target.files));
-  };
-
   const handleUpload = async () => {
     if (!templateId) {
       setUploadStatus('No template ID provided');

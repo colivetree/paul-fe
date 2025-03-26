@@ -3,10 +3,12 @@ import { uploadTemplate } from '../services/api';
 
 const TemplateUpload = () => {
   const [file, setFile] = useState(null);
-  const [uploadStatus, setUploadStatus] = useState('');
+  const [aiResponse, setAiResponse] = useState(null);
+  const [status, setStatus] = useState('');
+  const [uploadedTemplate, setUploadedTemplate] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
   const [originalTemplate, setOriginalTemplate] = useState(null);
   const [enrichedTemplate, setEnrichedTemplate] = useState(null);
-  const [aiResponse, setAiResponse] = useState('');
   const [templateId, setTemplateId] = useState(null);
 
   const handleFileChange = (event) => {
@@ -15,20 +17,20 @@ const TemplateUpload = () => {
 
   const handleUpload = async () => {
     if (!file) {
-      setUploadStatus('Please select a file');
+      setStatus('Please select a file');
       return;
     }
 
     try {
-      setUploadStatus('Uploading...');
+      setStatus('Uploading...');
       const response = await uploadTemplate(file);
-      setUploadStatus('Template uploaded, processed, and enriched successfully');
+      setStatus('Template uploaded, processed, and enriched successfully');
       setOriginalTemplate(response.original_template);
       setEnrichedTemplate(response.enriched_template);
       setTemplateId(response.template_id);
     } catch (error) {
       console.error('Error in handleUpload:', error);
-      setUploadStatus(`Error: ${error.message}`);
+      setStatus(`Error: ${error.message}`);
     }
   };
 
@@ -68,7 +70,7 @@ const TemplateUpload = () => {
       <h1>Template Upload</h1>
       <input type="file" accept=".docx" onChange={handleFileChange} />
       <button onClick={handleUpload}>Upload Template</button>
-      <p>{uploadStatus}</p>
+      <p>{status}</p>
       {templateId && (
         <div>
           <h2>Template ID: {templateId}</h2>
